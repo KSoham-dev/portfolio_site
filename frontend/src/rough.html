@@ -1,0 +1,84 @@
+<script setup>
+import { ref } from 'vue';
+
+// This ref will hold the ID of the currently visible section.
+// It is now only updated on click, not by scrolling.
+const activeSection = ref('home');
+</script>
+
+<template>
+  <!-- Main page container -->
+  <div class="font-sans">
+
+    <!-- Navbar is fixed to the top of the page -->
+    <nav class="fixed top-0 left-0 right-0 z-50 bg-white border-b-2 border-black">
+      <div class="navbar m-4 p-2 max-w-xl mx-auto rounded-2xl flex items-center justify-center gap-x-4">
+        
+        <!-- Buttons are now <a> tags using href for scrolling -->
+        <a 
+          href="#home"
+          @click="activeSection = 'home'" 
+          :class="{ 'shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]': activeSection === 'home' }"
+          class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-shadow duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          Home
+        </a>
+
+        <a 
+          href="#projects"
+          @click="activeSection = 'projects'" 
+          :class="{ 'shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]': activeSection === 'projects' }"
+          class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-shadow duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          Projects
+        </a>
+
+        <a 
+          href="#blog"
+          @click="activeSection = 'blog'" 
+          :class="{ 'shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]': activeSection === 'blog' }"
+          class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-shadow duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          Blog
+        </a>
+
+        <a 
+          href="#about"
+          @click="activeSection = 'about'" 
+          :class="{ 'shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]': activeSection === 'about' }"
+          class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-shadow duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          About
+        </a>
+      </div>
+    </nav>
+    
+    <!-- Content sections that the buttons link to -->
+    <main class="pt-24"> <!-- Padding-top to offset for the fixed navbar -->
+      <div id="home" class="content-section min-h-screen bg-gray-50 p-8">
+        <h1 class="text-4xl font-bold mb-4">Home Section</h1>
+        <p>This is the home section. Scroll down to see the next one.</p>
+      </div>
+
+      <div id="projects" class="content-section min-h-screen bg-white p-8">
+        <h1 class="text-4xl font-bold mb-4">Projects Section</h1>
+        <p>This is the projects section. The "Projects" button should now be selected.</p>
+      </div>
+
+      <div id="blog" class="content-section min-h-screen bg-gray-50 p-8">
+        <h1 class="text-4xl font-bold mb-4">Blog Section</h1>
+        <p>This is the blog section.</p>
+      </div>
+
+      <div id="about" class="content-section min-h-screen bg-white p-8">
+        <h1 class="text-4xl font-bold mb-4">About Section</h1>
+        <p>This is the about section.</p>
+      </div>
+    </main>
+
+  </div>
+</template>
+
+<style>
+/* For smooth scrolling to work correctly on the root element */
+html {
+  scroll-behavior: smooth;
+}
+</style>
+
