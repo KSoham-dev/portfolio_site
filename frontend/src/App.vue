@@ -2,7 +2,7 @@
 import { ref, watch, onUnmounted } from 'vue';
 import Carousel from './components/carousel.vue';
 
-// Social menu logic remains the same
+// Social menu logic (remains the same)
 const isSocialMenuOpen = ref(false);
 const socialMenuContainer = ref(null);
 
@@ -28,14 +28,20 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', handleClickOutside);
 });
 
-// The activeSection state has been removed to allow scrolling
+// --- New logic for collapsible navbar ---
+const isNavMenuOpen = ref(false);
+
+const toggleNavMenu = () => {
+  isNavMenuOpen.value = !isNavMenuOpen.value;
+};
 </script>
 
 <template>
   <div
     class="navbar p-4 rounded-2xl bg-white/90 backdrop-blur-lg shadow-md flex items-center justify-between border-2 border-black border-solid fixed top-6 left-6 right-6 z-50">
     <div class="text-2xl font-bold">SK</div>
-    <div class="flex items-center space-x-2 sm:space-x-4">
+
+    <div class="hidden md:flex items-center space-x-2 sm:space-x-4">
       <a href="#home"
         class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
         Home
@@ -50,6 +56,34 @@ onUnmounted(() => {
       </a>
       <a href="#about"
         class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
+        About
+      </a>
+    </div>
+
+    <div class="md:hidden">
+      <button @click="toggleNavMenu" class="text-black focus:outline-none">
+        <i :class="isNavMenuOpen ? 'ri-close-line' : 'ri-menu-line'" class="text-3xl"></i>
+      </button>
+    </div>
+  </div>
+
+  <div v-if="isNavMenuOpen"
+    class="md:hidden fixed top-24 left-6 right-6 z-40 bg-white/90 backdrop-blur-lg rounded-2xl shadow-md border-2 border-black p-4">
+    <div class="flex flex-col items-center space-y-4">
+      <a href="#home" @click="toggleNavMenu"
+        class="w-full bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+        Home
+      </a>
+      <a href="#projects" @click="toggleNavMenu"
+        class="w-full bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+        Projects
+      </a>
+      <a href="#blog" @click="toggleNavMenu"
+        class="w-full bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+        Blog
+      </a>
+      <a href="#about" @click="toggleNavMenu"
+        class="w-full bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
         About
       </a>
     </div>
@@ -78,9 +112,9 @@ onUnmounted(() => {
         <h1 class="text-7xl font-bold mb-4 leading-tight">
           <p> Soham </p> Kulkarni
         </h1>
-          <p>A final-year Data Science student at IIT Madras</p>
-          <p>specializing in building intelligent systems,</p>
-          <p>with a firm grounding in mathematics</p>
+        <p>A final-year Data Science student at IIT Madras</p>
+        <p>specializing in building intelligent systems,</p>
+        <p>with a firm grounding in mathematics</p>
       </div>
       <div class="w-full md:w-1/2 p-4">
         <div class=" rounded-lg p-8 w-full h-64 md:h-80 flex items-center justify-center">
@@ -93,14 +127,14 @@ onUnmounted(() => {
       class="content-section min-h-screen bg-black text-white p-4 md:p-8 flex flex-col md:flex-row items-center">
       <div class="w-full md:w-1/2 p-4">
         <h1 class="text-7xl font-bold mb-4 leading-tight">Projects</h1>
-          <p>This selection of projects demonstrates</p>
-          <p>my process of deconstructing a problem</p>
-          and building a robust, end-to-end solution.
+        <p>This selection of projects demonstrates</p>
+        <p>my process of deconstructing a problem</p>
+        and building a robust, end-to-end solution.
       </div>
       <div class="w-full md:w-1/2 p-4">
         <div class=" flex items-center justify-center">
           <Carousel />
-      </div>
+        </div>
       </div>
     </div>
 
