@@ -28,7 +28,7 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', handleClickOutside);
 });
 
-// --- New logic for collapsible navbar ---
+// Logic for collapsible navbar
 const isNavMenuOpen = ref(false);
 
 const toggleNavMenu = () => {
@@ -106,7 +106,7 @@ const toggleNavMenu = () => {
     </button>
   </div>
 
-  <main>
+  <main class="pt-28 md:pt-24">
     <div id="home" class="content-section min-h-screen p-4 md:p-8 flex flex-col md:flex-row items-center">
       <div class="w-full md:w-1/2 p-4">
         <h1 class="text-7xl font-bold mb-4 leading-tight">
