@@ -6,8 +6,8 @@ const cards = ref([
     {
         id: 'card-1',
         title: 'ChurnPredictor',
-        imgSrc: '/ChurnPredictor.png',
-        imgAlt: 'pineapple',
+        imgSrc: '/assets/img/ChurnPredictor.png',
+        imgAlt: 'churnPredictor',
         link: 'https://github.com/KSoham-dev', // Added link
         poem: [
             `Welcome to ChurnPredictor, a predictive realm where data foretells customer loyalty. It deciphers the subtle signals of 
@@ -18,7 +18,7 @@ const cards = ref([
     {
         id: 'card-2',
         title: 'Vedaphix',
-        imgSrc: '/vedaphix.png',
+        imgSrc: '/assets/img/vedaphix.png',
         imgAlt: 'Vedaphix',
         link: 'https://github.com/KSoham-dev/soft-engg-project-jan-2025-se-Jan-2', // Added link
         poem: [
@@ -29,8 +29,8 @@ const cards = ref([
     },{
         id: 'card-3',
         title: 'Bookit',
-        imgSrc: '/bookit.png',
-        imgAlt: 'Bookit project screenshot',
+        imgSrc: '/assets/img/bookit.png',
+        imgAlt: 'Bookit',
         link: 'https://github.com/KSoham-dev/bookit-v2', // Added link
         poem: [
             `Welcome to the realm of Bookit V2, a library of two halves. 

@@ -145,7 +145,7 @@ onUnmounted(() => {
       <div class="w-full lg:w-1/2 p-4 flex justify-center items-center">
         <img
           class="rounded-full object-cover w-64 h-64 sm:w-80 sm:h-80 lg:w-96 lg:h-96 outline outline-2 outline-offset-2 outline-black-900 shadow-xl"
-          src="/PP3.jpg" alt="Profile photo of Soham">
+          src="/assets/img/profile.jpg" alt="Profile photo of Soham">
       </div>
     </div>
 
