@@ -443,27 +443,15 @@ onUnmounted(() => {
           <p>Hover to explore each skill.</p>
         </div>
         <div class="w-full lg:w-1/2 p-4 flex justify-center items-center">
-          <div class="skills-orbit-container">
-            <!-- Futuristic Rings -->
-            <div class="orbit-ring ring-1"></div>
-            <div class="orbit-ring ring-2"></div>
-            <div class="orbit-ring ring-3"></div>
-            <div class="orbit-core"></div>
-            
-            <div class="skills-orbit">
-              <div v-for="(skill, index) in skills" :key="skill.name" 
-                   class="skill-wrapper"
-                   :style="getSkillPosition(index, skills.length)"
-                   @mouseenter="hoveredSkill = skill.name"
-                   @mouseleave="hoveredSkill = null">
-                <div :class="['skill-icon', { 'blurred': hoveredSkill && hoveredSkill !== skill.name }]">
-                  <div class="skill-content">
-                    <img v-if="skill.iconUrl" :src="skill.iconUrl" :alt="skill.name" class="skill-icon-img" />
-                  </div>
-                </div>
-                <div class="skill-tooltip" v-if="hoveredSkill === skill.name">
-                  {{ skill.name }}
-                </div>
+          <div class="skills-circle-container">
+            <div v-for="(skill, index) in skills" :key="skill.name" 
+                 :class="['skill-icon', { 'blurred': hoveredSkill && hoveredSkill !== skill.name }]"
+                 :style="getSkillPosition(index, skills.length)"
+                 @mouseenter="hoveredSkill = skill.name"
+                 @mouseleave="hoveredSkill = null">
+              <img v-if="skill.iconUrl" :src="skill.iconUrl" :alt="skill.name" class="skill-icon-img" />
+              <div class="skill-tooltip" v-if="hoveredSkill === skill.name">
+                {{ skill.name }}
               </div>
             </div>
           </div>
@@ -785,185 +773,91 @@ body {
   }
 }
 
-/* Skills Section Styles - Futuristic Orbit */
-.skills-orbit-container {
+/* Skills Section Styles */
+.skills-circle-container {
   position: relative;
   width: 500px;
   height: 500px;
   display: flex;
   align-items: center;
   justify-content: center;
-  perspective: 1000px;
-  transform-style: preserve-3d;
-}
-
-/* Pause animations on hover */
-.skills-orbit-container:hover .skills-orbit,
-.skills-orbit-container:hover .orbit-ring,
-.skills-orbit-container:hover .skill-icon {
-  animation-play-state: paused;
-}
-
-.skills-orbit {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  transform-style: preserve-3d;
-  animation: orbit-rotate 20s linear infinite;
-}
-
-.orbit-core {
-  position: absolute;
-  width: 100px;
-  height: 100px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.8) 0%, rgba(139, 92, 246, 0.2) 70%, transparent 100%);
-  border-radius: 50%;
-  filter: blur(10px);
-  box-shadow: 0 0 40px rgba(99, 102, 241, 0.6);
-  animation: pulse-core 3s ease-in-out infinite;
-}
-
-.orbit-ring {
-  position: absolute;
-  border-radius: 50%;
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
-  transform-style: preserve-3d;
-}
-
-.ring-1 {
-  width: 350px;
-  height: 350px;
-  border-color: rgba(139, 92, 246, 0.4);
-  animation: rotate-ring-1 10s linear infinite;
-}
-
-.ring-2 {
-  width: 450px;
-  height: 450px;
-  border-color: rgba(59, 130, 246, 0.3);
-  border-width: 2px;
-  border-left-color: transparent;
-  border-right-color: transparent;
-  animation: rotate-ring-2 15s linear infinite reverse;
-}
-
-.ring-3 {
-  width: 250px;
-  height: 250px;
-  border: 2px dashed rgba(236, 72, 153, 0.3);
-  animation: rotate-ring-3 20s linear infinite;
-}
-
-.skill-wrapper {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  transform-style: preserve-3d;
 }
 
 .skill-icon {
   position: absolute;
-  top: -30px;
-  left: -30px;
-  width: 60px;
-  height: 60px;
+  width: 85px;
+  height: 85px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.9);
-  border: 2px solid rgba(99, 102, 241, 0.5);
+  background: #ffffff;
+  border: 3px solid #000;
   border-radius: 50%;
   transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   cursor: pointer;
-  box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
-  transform-style: preserve-3d;
-  /* Counter-rotate to keep icons facing forward */
-  animation: counter-rotate 20s linear infinite reverse;
-}
-
-.skill-content {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .skill-icon i {
-  font-size: 2.5rem;
+  font-size: 3rem;
 }
 
 .skill-icon-img {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 3rem;
+  height: 3rem;
   object-fit: contain;
 }
 
 .skill-icon:hover {
-  transform: scale(1.5);
-  box-shadow: 0 0 30px rgba(139, 92, 246, 0.8);
-  z-index: 100;
-  border-color: #8b5cf6;
-  background: white;
+  transform: scale(1.25);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+  border-color: #333;
 }
 
 .skill-icon.blurred {
-  filter: blur(2px);
-  opacity: 0.5;
-  transform: scale(0.9);
+  filter: blur(4px);
+  opacity: 0.3;
+  transform: scale(0.95);
 }
 
 .skill-tooltip {
   position: absolute;
-  top: -40px;
+  top: -50px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.9);
-  color: #fff;
-  padding: 8px 12px;
-  border-radius: 6px;
+  background: #000;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
   pointer-events: none;
-  border: 1px solid rgba(139, 92, 246, 0.5);
-  box-shadow: 0 0 15px rgba(139, 92, 246, 0.4);
-  z-index: 101;
+  animation: fadeIn 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  border: 2px solid #333;
 }
 
-@keyframes orbit-rotate {
-  0% { transform: rotateZ(0deg); }
-  100% { transform: rotateZ(360deg); }
+.skill-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+  border-top-color: #000;
 }
 
-@keyframes counter-rotate {
-  0% { transform: rotateZ(0deg); }
-  100% { transform: rotateZ(-360deg); }
-}
-
-@keyframes rotate-ring-1 {
-  0% { transform: rotateX(60deg) rotateY(0deg); }
-  100% { transform: rotateX(60deg) rotateY(360deg); }
-}
-
-@keyframes rotate-ring-2 {
-  0% { transform: rotateX(-45deg) rotateY(0deg); }
-  100% { transform: rotateX(-45deg) rotateY(360deg); }
-}
-
-@keyframes rotate-ring-3 {
-  0% { transform: rotateX(30deg) rotateY(0deg); }
-  100% { transform: rotateX(30deg) rotateY(360deg); }
-}
-
-@keyframes pulse-core {
-  0%, 100% { transform: scale(1); opacity: 0.8; }
-  50% { transform: scale(1.2); opacity: 0.5; }
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 /* Education Timeline Styles - Futuristic Design */
