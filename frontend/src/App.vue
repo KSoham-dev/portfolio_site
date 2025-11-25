@@ -120,6 +120,9 @@ onMounted(() => {
       observer.observe(element);
     }
   });
+  
+  // Start code typing animation
+  setTimeout(() => typeCode(), 2000);
 });
 
 // The rest of your component logic remains unchanged
@@ -208,7 +211,7 @@ const skills = computed(() => {
 // Function to calculate circular position for skill icons
 const getSkillPosition = (index, total) => {
   const angle = (index / total) * 2 * Math.PI - Math.PI / 2;
-  const radius = 160; // Increased radius to prevent overlap
+  const radius = 220; // Increased from 160 for fuller display
   const x = Math.cos(angle) * radius;
   const y = Math.sin(angle) * radius;
   return {
@@ -229,21 +232,21 @@ const educationData = ref([
     id: 1,
     degree: 'Bachelor of Science in Data Science',
     institution: 'IIT Madras',
-    year: '2021 - 2025',
+    year: 'Sept 2022 - present',
     description: 'Specializing in Machine Learning, Deep Learning, and Big Data Analytics.'
   },
   {
     id: 2,
     degree: 'Higher Secondary Certificate',
     institution: 'Junior College',
-    year: '2019 - 2021',
+    year: 'Sept 2020 - June 2022',
     description: 'Completed pre-university education with focus on Mathematics, Physics, and Computer Science.'
   },
   {
     id: 3,
     degree: 'Secondary School Certificate',
     institution: 'High School',
-    year: '2009 - 2019',
+    year: 'June 2020',
     description: 'Foundation years building strong analytical and problem-solving skills.'
   }
 ]);
@@ -257,6 +260,53 @@ const cursorPointer = ref(false);
 const updateCursor = (e) => {
   cursorX.value = e.clientX;
   cursorY.value = e.clientY;
+};
+
+// Code snippets for showcase
+const codeSnippets = [
+  `# Neural Network Training
+model = Sequential([
+  Dense(128, activation='relu'),
+  Dropout(0.2),
+  Dense(10, activation='softmax')
+])
+model.compile(optimizer='adam',
+              loss='categorical_crossentropy')`,
+  `# Data Analysis Pipeline
+df = pd.read_csv('data.csv')
+X = df.drop('target', axis=1)
+y = df['target']
+X_train, X_test = train_test_split(X, y)
+model.fit(X_train, y_train)`,
+  `# Deep Learning with PyTorch
+class NeuralNet(nn.Module):
+  def __init__(self):
+    super().__init__()
+    self.fc1 = nn.Linear(784, 256)
+    self.fc2 = nn.Linear(256, 10)
+  def forward(self, x):
+    return F.softmax(self.fc2(F.relu(self.fc1(x))))`
+];
+const currentSnippetIndex = ref(0);
+const displayedCode = ref('');
+const isTyping = ref(false);
+
+const typeCode = async () => {
+  if (isTyping.value) return;
+  isTyping.value = true;
+  
+  const snippet = codeSnippets[currentSnippetIndex.value];
+  displayedCode.value = '';
+  
+  for (let i = 0; i < snippet.length; i++) {
+    displayedCode.value += snippet[i];
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  currentSnippetIndex.value = (currentSnippetIndex.value + 1) % codeSnippets.length;
+  isTyping.value = false;
+  typeCode();
 };
 
 
@@ -386,7 +436,10 @@ onUnmounted(() => {
       'opacity-100 translate-y-0': visibleSections.home,
       'opacity-0 translate-y-10': !visibleSections.home && !visibleSections.projects
       }">
-        <div class="w-full text-center lg:text-left lg:w-1/2 lg:p-4">
+        <!-- Animated Background Grid -->
+        <div class="grid-background"></div>
+        
+        <div class="w-full text-center lg:text-left lg:w-1/2 lg:p-4 relative z-10">
           <h1 class="text-5xl sm:text-6xl lg:text-8xl font-bold mb-4 leading-tight">
             <p> Soham </p> Kulkarni
           </h1>
@@ -396,7 +449,7 @@ onUnmounted(() => {
             <p>with a firm grounding in mathematics</p>
           </div>
         </div>
-        <div class="w-full lg:w-1/2 p-4 flex justify-center items-center">
+        <div class="w-full lg:w-1/2 p-4 flex justify-center items-center relative z-10">
           <div 
             class="reveal-container"
             @mouseenter="startReveal"
@@ -418,13 +471,26 @@ onUnmounted(() => {
       'opacity-100 translate-y-0': visibleSections.projects,
       'opacity-0 translate-y-10': !visibleSections.projects
       }">
-        <div class="w-full text-center lg:text-left lg:w-1/2 p-4">
+        <!-- Code Snippet Showcase -->
+        <div class="code-window">
+          <div class="code-window-header">
+            <div class="code-dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            <span class="code-title">ml_model.py</span>
+          </div>
+          <pre class="code-content"><code>{{ displayedCode }}</code></pre>
+        </div>
+        
+        <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
           <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Projects</h1>
           <p>This selection of projects demonstrates</p>
           <p>my process of deconstructing a problem</p>
           and building a robust, end-to-end solution.
         </div>
-        <div class="w-full lg:w-1/2 p-4">
+        <div class="w-full lg:w-1/2 p-4 relative z-10">
           <div class="flex items-center justify-center">
             <projectDisplay />
           </div>
@@ -436,20 +502,23 @@ onUnmounted(() => {
       'opacity-100 translate-y-0': visibleSections.skills,
       'opacity-0 translate-y-10': !visibleSections.skills
       }">
-        <div class="w-full text-center lg:text-left lg:w-1/2 p-4">
+        <!-- Animated Background Grid -->
+        <div class="grid-background"></div>
+        
+        <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
           <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Skills</h1>
-          <p>A comprehensive toolkit of technologies</p>
-          <p>and frameworks that power my projects.</p>
-          <p>Hover to explore each skill.</p>
+          <p class="text-xl">A comprehensive toolkit of technologies</p>
+          <p class="text-xl">and frameworks that power my projects.</p>
+          <p class="text-xl mt-4">Hover to explore each skill.</p>
         </div>
-        <div class="w-full lg:w-1/2 p-4 flex justify-center items-center">
-          <div class="skills-circle-container">
+        <div class="w-full lg:w-1/2 p-4 flex justify-center items-center relative z-10">
+          <div class="skills-circle-container-large">
             <div v-for="(skill, index) in skills" :key="skill.name" 
-                 :class="['skill-icon', { 'blurred': hoveredSkill && hoveredSkill !== skill.name }]"
+                 :class="['skill-icon-large', { 'blurred': hoveredSkill && hoveredSkill !== skill.name }]"
                  :style="getSkillPosition(index, skills.length)"
                  @mouseenter="hoveredSkill = skill.name"
                  @mouseleave="hoveredSkill = null">
-              <img v-if="skill.iconUrl" :src="skill.iconUrl" :alt="skill.name" class="skill-icon-img" />
+              <img v-if="skill.iconUrl" :src="skill.iconUrl" :alt="skill.name" class="skill-icon-img-large" />
               <div class="skill-tooltip" v-if="hoveredSkill === skill.name">
                 {{ skill.name }}
               </div>
@@ -463,7 +532,41 @@ onUnmounted(() => {
       'opacity-100 translate-y-0': visibleSections.journey,
       'opacity-0 translate-y-10': !visibleSections.journey
       }">
-        <div class="w-full text-center lg:text-left lg:w-1/2 p-4">
+        <!-- Data Visualization Background Elements -->
+        <svg class="data-viz-background" viewBox="0 0 400 300">
+          <!-- Animated bar chart -->
+          <g class="bar-chart">
+            <rect x="50" y="200" width="30" height="0" class="data-bar" style="animation-delay: 0s">
+              <animate attributeName="height" from="0" to="80" dur="1s" fill="freeze" begin="0s"/>
+              <animate attributeName="y" from="200" to="120" dur="1s" fill="freeze" begin="0s"/>
+            </rect>
+            <rect x="90" y="200" width="30" height="0" class="data-bar" style="animation-delay: 0.2s">
+              <animate attributeName="height" from="0" to="120" dur="1s" fill="freeze" begin="0.2s"/>
+              <animate attributeName="y" from="200" to="80" dur="1s" fill="freeze" begin="0.2s"/>
+            </rect>
+            <rect x="130" y="200" width="30" height="0" class="data-bar" style="animation-delay: 0.4s">
+              <animate attributeName="height" from="0" to="60" dur="1s" fill="freeze" begin="0.4s"/>
+              <animate attributeName="y" from="200" to="140" dur="1s" fill="freeze" begin="0.4s"/>
+            </rect>
+            <rect x="170" y="200" width="30" height="0" class="data-bar" style="animation-delay: 0.6s">
+              <animate attributeName="height" from="0" to="150" dur="1s" fill="freeze" begin="0.6s"/>
+              <animate attributeName="y" from="200" to="50" dur="1s" fill="freeze" begin="0.6s"/>
+            </rect>
+          </g>
+          
+          <!-- Animated line graph -->
+          <polyline class="line-graph" points="250,180 280,140 310,160 340,100 370,120"
+                    stroke-dasharray="200" stroke-dashoffset="200">
+            <animate attributeName="stroke-dashoffset" from="200" to="0" dur="2s" fill="freeze"/>
+          </polyline>
+          <circle cx="250" cy="180" r="3" class="graph-point" style="animation-delay: 0s"/>
+          <circle cx="280" cy="140" r="3" class="graph-point" style="animation-delay: 0.5s"/>
+          <circle cx="310" cy="160" r="3" class="graph-point" style="animation-delay: 1s"/>
+          <circle cx="340" cy="100" r="3" class="graph-point" style="animation-delay: 1.5s"/>
+          <circle cx="370" cy="120" r="3" class="graph-point" style="animation-delay: 2s"/>
+        </svg>
+        
+        <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
           <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Journey</h1>
           <div class="text-lg">
             <p>My professional path and</p>
@@ -471,7 +574,7 @@ onUnmounted(() => {
             <p>define my career.</p>
           </div>
         </div>
-        <div class="w-full lg:w-1/2 p-4">
+        <div class="w-full lg:w-1/2 p-4 relative z-10">
           <div class="timeline-container">
             <div class="timeline-inner">
               <div class="timeline-item" v-for="edu in educationData" :key="edu.id">
@@ -783,10 +886,36 @@ body {
   justify-content: center;
 }
 
+/* Larger skills container for fuller display */
+.skills-circle-container-large {
+  position: relative;
+  width: 700px;
+  height: 700px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .skill-icon {
   position: absolute;
   width: 85px;
   height: 85px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 3px solid #000;
+  border-radius: 50%;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Larger skill icons */
+.skill-icon-large {
+  position: absolute;
+  width: 110px;
+  height: 110px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -808,14 +937,22 @@ body {
   object-fit: contain;
 }
 
-.skill-icon:hover {
+.skill-icon-img-large {
+  width: 4rem;
+  height: 4rem;
+  object-fit: contain;
+}
+
+.skill-icon:hover,
+.skill-icon-large:hover {
   transform: scale(1.25);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   z-index: 10;
   border-color: #333;
 }
 
-.skill-icon.blurred {
+.skill-icon.blurred,
+.skill-icon-large.blurred {
   filter: blur(4px);
   opacity: 0.3;
   transform: scale(0.95);
@@ -987,12 +1124,14 @@ body {
     height: 280px;
   }
   
-  .skills-circle-container {
+  .skills-circle-container,
+  .skills-circle-container-large {
     width: 360px;
     height: 360px;
   }
   
-  .skill-icon {
+  .skill-icon,
+  .skill-icon-large {
     width: 65px;
     height: 65px;
   }
@@ -1001,7 +1140,8 @@ body {
     font-size: 2rem !important;
   }
   
-  .skill-icon-img {
+  .skill-icon-img,
+  .skill-icon-img-large {
     width: 2rem !important;
     height: 2rem !important;
   }
@@ -1011,4 +1151,295 @@ body {
     padding: 20px;
   }
 }
+
+/* Animated Grid Background */
+.grid-background {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+  background-size: 50px 50px;
+  z-index: 1;
+  animation: grid-shift 20s linear infinite;
+}
+
+@keyframes grid-shift {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 50px 50px;
+  }
+}
+
+/* Floating Particles */
+.particles-container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.particle {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  animation: float-particle-enhanced 12s ease-in-out infinite;
+}
+
+/* Particles for light backgrounds (white/gray) */
+.particles-light .particle {
+  background: radial-gradient(circle, rgba(102, 126, 234, 0.4) 0%, rgba(0, 0, 0, 0.15) 100%);
+  box-shadow: 0 0 10px rgba(102, 126, 234, 0.3);
+}
+
+/* Particles for dark backgrounds (black) */
+.particles-dark .particle {
+  background: radial-gradient(circle, rgba(0, 255, 255, 0.5) 0%, rgba(118, 75, 162, 0.2) 100%);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+}
+
+/* Enhanced floating animation with more organic movement */
+@keyframes float-particle-enhanced {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  25% {
+    transform: translate(30px, -30px) scale(1.2);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translate(-20px, -60px) scale(0.9);
+    opacity: 0.5;
+  }
+  75% {
+    transform: translate(40px, -90px) scale(1.1);
+    opacity: 0.7;
+  }
+  90% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: translate(0, -120px) scale(1);
+    opacity: 0;
+  }
+}
+
+/* Statistics Cards */
+.stat-card {
+  cursor: pointer;
+  position: relative;
+}
+
+.stat-card:hover {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.stat-card:hover .text-gray-700 {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Code Window Showcase */
+.code-window {
+  position: absolute;
+  top: 10%;
+  right: 5%;
+  width: 400px;
+  max-width: 42%;
+  background: #1e1e1e;
+  border: 2px solid #000;
+  border-radius: 8px;
+  box-shadow: 8px 8px 0px 0px rgba(0, 0, 0, 1);
+  z-index: 5;
+  opacity: 0.85;
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.code-window:hover {
+  opacity: 1;
+  transform: translateY(-4px);
+}
+
+.code-window-header {
+  background: #2d2d2d;
+  padding: 12px 16px;
+  border-bottom: 1px solid #000;
+  border-radius: 6px 6px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.code-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid #000;
+}
+
+.dot.red {
+  background: #ff5f56;
+}
+
+.dot.yellow {
+  background: #ffbd2e;
+}
+
+.dot.green {
+  background: #27c93f;
+}
+
+.code-title {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Courier New', monospace;
+}
+
+.code-content {
+  padding: 20px;
+  margin: 0;
+  color: #d4d4d4;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  min-height: 200px;
+  max-height: 300px;
+  overflow: hidden;
+}
+
+.code-content code {
+  color: #9cdcfe;
+}
+
+/* Neural Network Visualization */
+.neural-network {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  opacity: 0.15;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.neural-node {
+  fill: url(#nodeGradient);
+  animation: pulse-node 3s ease-in-out infinite;
+}
+
+@keyframes pulse-node {
+  0%, 100% {
+    opacity: 0.6;
+    r: 4;
+  }
+  50% {
+    opacity: 1;
+    r: 6;
+  }
+}
+
+.neural-connection {
+  stroke: #00ffff;
+  stroke-width: 1;
+  opacity: 0.3;
+  animation: pulse-connection 3s ease-in-out infinite;
+}
+
+@keyframes pulse-connection {
+  0%, 100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Data Visualization Background */
+.data-viz-background {
+  position: absolute;
+  width: 50%;
+  max-width: 400px;
+  height: auto;
+  top: 50%;
+  left: 5%;
+  transform: translateY(-50%);
+  opacity: 0.1;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.data-bar {
+  fill: #00ffff;
+  opacity: 0.6;
+}
+
+.line-graph {
+  fill: none;
+  stroke: #667eea;
+  stroke-width: 2;
+  opacity: 0.7;
+}
+
+.graph-point {
+  fill: #764ba2;
+  opacity: 0;
+  animation: fade-in-point 0.5s ease forwards;
+}
+
+@keyframes fade-in-point {
+  to {
+    opacity: 1;
+  }
+}
+
+/* Responsive adjustments for new elements */
+@media (max-width: 1024px) {
+  .code-window {
+    width: 320px;
+    max-width: 38%;
+    top: 5%;
+    right: 2%;
+  }
+  
+  .code-content {
+    font-size: 11px;
+    padding: 16px;
+  }
+  
+  .neural-network,
+  .data-viz-background {
+    opacity: 0.08;
+  }
+}
+
+@media (max-width: 768px) {
+  .code-window {
+    display: none; /* Hide on mobile for better UX */
+  }
+  
+  .grid-background {
+    background-size: 30px 30px;
+  }
+  
+  .data-viz-background {
+    width: 60%;
+    left: 2%;
+  }
+}
+
 </style>
