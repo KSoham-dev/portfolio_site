@@ -188,7 +188,7 @@ function convertToThirdPerson(text) {
 export async function generateAnswerWithContext(query, context) {
   try {
     // Use gemini-2.5-flash - available and no quota issues
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
     const contextText = context
       .map((match) => match.metadata?.text || '')
