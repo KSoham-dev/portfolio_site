@@ -86,28 +86,8 @@ onMounted(() => {
     showExplicitMessage.value = true;
   }, 4000);
 
-  // Custom cursor tracking
-  document.addEventListener('mousemove', updateCursor);
-  document.addEventListener('mousedown', () => cursorClicking.value = true);
-  document.addEventListener('mouseup', () => cursorClicking.value = false);
-  
   // Disable right click
   document.addEventListener('contextmenu', (e) => e.preventDefault());
-
-  // Track hover state for pointer cursor
-  const handleMouseOver = (e) => {
-    const target = e.target;
-    if (target.tagName === 'A' || target.tagName === 'BUTTON' || target.closest('a') || target.closest('button') || target.classList.contains('cursor-pointer')) {
-      cursorPointer.value = true;
-    }
-  };
-  
-  const handleMouseOut = (e) => {
-    cursorPointer.value = false;
-  };
-  
-  document.addEventListener('mouseover', handleMouseOver);
-  document.addEventListener('mouseout', handleMouseOut);
 
   // IntersectionObserver logic remains the same
   observer = new IntersectionObserver(
@@ -255,17 +235,6 @@ const educationData = ref([
   }
 ]);
 
-// Custom cursor logic
-const cursorX = ref(0);
-const cursorY = ref(0);
-const cursorClicking = ref(false);
-const cursorPointer = ref(false);
-
-const updateCursor = (e) => {
-  cursorX.value = e.clientX;
-  cursorY.value = e.clientY;
-};
-
 // Code snippets for showcase
 const codeSnippets = [
   `# Neural Network Training
@@ -319,7 +288,6 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', enterSite);
   document.removeEventListener('keydown', enterSite);
   document.removeEventListener('mousedown', handleClickOutside);
-  document.removeEventListener('mousemove', updateCursor);
   if (observer) {
     observer.disconnect();
   }
@@ -327,16 +295,6 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- Custom Cursor -->
-  <div 
-    class="custom-cursor" 
-    :class="{ 'clicking': cursorClicking, 'pointer': cursorPointer }"
-    :style="{ left: cursorX + 'px', top: cursorY + 'px' }">
-    <div class="cursor-arrow"></div>
-    <div class="cursor-ring"></div>
-    <div class="cursor-pointer-ring"></div>
-  </div>
-  
   <div v-show="isLoading" class="welcome-screen">
     <div class="text-center px-4">
       <h1 class="text-white text-6xl md:text-8xl lg:text-9xl font-thin tracking-widest animate-pulse">Welcome</h1>
@@ -397,8 +355,9 @@ onUnmounted(() => {
               <a href="https://mail.google.com/mail/u/0/?fs=1&to=sohamkulkarni709@gmail.com&su=Hello&body=I+wanted+to+reach+out!&tf=cm"
                 class="text-black hover:opacity-70 transition-opacity" target="_blank"><i
                   class="ri-mail-line text-3xl"></i></a>
-              <a href="#" class="text-black hover:opacity-70 transition-opacity" target="_blank"><i
-                  class="ri-chat-ai-line text-3xl"></i></a>
+              <button @click="showRAGModal = true; isSocialMenuOpen = false"
+                class="text-black hover:opacity-70 transition-opacity" title="Ask me anything"><i
+                  class="ri-chat-ai-line text-3xl"></i></button>
             </div>
           </div>
         </transition>
@@ -425,11 +384,11 @@ onUnmounted(() => {
           target="_blank">
           <i class="ri-mail-line text-3xl"></i>
         </a>
-        <a href="#"
+        <button @click="showRAGModal = true"
           class="w-14 h-14 bg-white/75 backdrop-blur-lg rounded-full shadow-md border-2 border-black flex items-center justify-center text-black hover:opacity-70 transition-opacity"
-          target="_blank">
+          title="Ask me anything">
           <i class="ri-chat-ai-line text-3xl"></i>
-        </a>
+        </button>
       </div>
 
     </div>
@@ -594,15 +553,6 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- RAG Chat Button -->
-      <button
-        @click="showRAGModal = true"
-        class="fixed bottom-8 right-8 z-40 w-14 h-14 bg-white/75 backdrop-blur-lg rounded-full shadow-md border-2 border-black flex items-center justify-center text-black hover:opacity-70 transition-opacity"
-        title="Ask me anything"
-      >
-        <i class="ri-chat-ai-line text-3xl"></i>
-      </button>
-
       <!-- RAG Modal Overlay and Container -->
       <div v-if="showRAGModal" class="fixed inset-0 z-50 flex items-center justify-center">
         <!-- Backdrop with blur -->
@@ -644,100 +594,6 @@ body {
   font-family: "Cormorant Garamond", serif;
   font-weight: 400;
   font-style: normal;
-  cursor: none !important;
-}
-
-/* Force hide cursor on all elements */
-* {
-  cursor: none !important;
-}
-
-/* Custom cursor */
-/* Custom cursor */
-.custom-cursor {
-  position: fixed;
-  pointer-events: none;
-  z-index: 10000;
-  mix-blend-mode: difference;
-  transform: translate(-50%, -50%);
-  transition: transform 0.1s ease;
-}
-
-.cursor-arrow {
-  width: 0;
-  height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 20px solid white;
-  transform: rotate(-45deg);
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  margin-top: -10px;
-  margin-left: -8px;
-}
-
-.cursor-ring {
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 50%;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(0.5);
-  opacity: 0;
-  transition: all 0.2s ease;
-}
-
-.custom-cursor.clicking {
-  transform: translate(-50%, -50%) scale(0.8);
-}
-
-.custom-cursor.clicking .cursor-ring {
-  transform: translate(-50%, -50%) scale(1.5);
-  opacity: 1;
-  border-color: #00ffff;
-  box-shadow: 0 0 10px #00ffff;
-}
-
-.custom-cursor.clicking .cursor-arrow {
-  border-bottom-color: #00ffff;
-}
-
-/* Pointer state (hovering links/buttons) */
-.cursor-pointer-ring {
-  width: 30px;
-  height: 30px;
-  border: 2px dashed #00ffff;
-  border-radius: 50%;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(0);
-  opacity: 0;
-  transition: all 0.2s ease;
-  animation: spin 4s linear infinite;
-}
-
-.custom-cursor.pointer .cursor-pointer-ring {
-  transform: translate(-50%, -50%) scale(1);
-  opacity: 1;
-}
-
-.custom-cursor.pointer .cursor-arrow {
-  transform: rotate(-45deg) scale(0.8);
-  border-bottom-color: #00ffff;
-}
-
-.custom-cursor.pointer .cursor-ring {
-  border-color: rgba(0, 255, 255, 0.3);
-  transform: translate(-50%, -50%) scale(0.8);
-}
-
-@keyframes spin {
-  from { transform: translate(-50%, -50%) rotate(0deg); }
-  to { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
 /* Styles for the Welcome Screen */
