@@ -597,10 +597,10 @@ onUnmounted(() => {
       <!-- RAG Chat Button -->
       <button
         @click="showRAGModal = true"
-        class="fixed bottom-8 right-8 z-40 w-14 h-14 rounded-full bg-black text-white shadow-lg hover:bg-gray-800 transition-all duration-300 flex items-center justify-center text-2xl hover:scale-110"
+        class="fixed bottom-8 right-8 z-40 w-14 h-14 bg-white/75 backdrop-blur-lg rounded-full shadow-md border-2 border-black flex items-center justify-center text-black hover:opacity-70 transition-opacity"
         title="Ask me anything"
       >
-        💬
+        <i class="ri-chat-ai-line text-3xl"></i>
       </button>
 
       <!-- RAG Modal Overlay and Container -->

@@ -246,27 +246,27 @@ const sendQuery = async () => {
   max-width: 900px;
   margin: 0 auto;
   background: white;
-  border: v-bind("props.isModal ? '0' : '2px solid black'");
-  border-radius: v-bind("props.isModal ? '0' : '12px'");
+  border: none;
+  border-radius: 0;
   overflow: hidden;
-  box-shadow: v-bind("props.isModal ? 'none' : '6px 6px 0px 0px rgba(0, 0, 0, 0.1)'");
+  box-shadow: none;
   transition: all 0.3s ease;
 }
 
 .rag-chat-wrapper:hover {
-  box-shadow: v-bind("props.isModal ? 'none' : '8px 8px 0px 0px rgba(0, 0, 0, 0.15)'");
+  box-shadow: none;
 }
 
 /* Header */
 .rag-header {
-  padding: 24px;
-  background: linear-gradient(135deg, #ffffff 0%, #f9f9f9 100%);
+  padding: 20px;
+  background: white;
   border-bottom: 2px solid black;
 }
 
 .rag-title {
-  margin: 0 0 8px 0;
-  font-size: 24px;
+  margin: 0 0 6px 0;
+  font-size: 18px;
   font-weight: 700;
   color: black;
   font-family: system-ui, -apple-system, sans-serif;
@@ -274,7 +274,7 @@ const sendQuery = async () => {
 
 .rag-subtitle {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   color: #666;
   font-weight: 400;
 }
@@ -283,13 +283,13 @@ const sendQuery = async () => {
 .rag-messages-container {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 16px;
   background: white;
   scroll-behavior: smooth;
 }
 
 .rag-messages-container::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 .rag-messages-container::-webkit-scrollbar-track {
@@ -305,39 +305,38 @@ const sendQuery = async () => {
   background: #999;
 }
 
-/* Empty State */
 .rag-empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 400px;
+  min-height: 300px;
   text-align: center;
   color: #999;
 }
 
 .rag-empty-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
-  opacity: 0.6;
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
 }
 
 .rag-empty-text {
-  font-size: 16px;
+  font-size: 14px;
   color: #666;
-  margin-bottom: 32px;
+  margin-bottom: 20px;
   font-weight: 500;
 }
 
 .rag-example-queries {
   width: 100%;
-  max-width: 500px;
+  max-width: 400px;
 }
 
 .rag-example-label {
-  font-size: 13px;
+  font-size: 12px;
   color: #999;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -346,26 +345,26 @@ const sendQuery = async () => {
 .rag-example-buttons {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .rag-example-btn {
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: white;
-  border: 2px solid #ddd;
-  border-radius: 6px;
-  font-size: 13px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
   color: #333;
   cursor: pointer;
   text-align: left;
   transition: all 0.2s ease;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .rag-example-btn:hover {
   border-color: black;
   background: #f9f9f9;
-  transform: translateX(4px);
+  transform: translateX(2px);
 }
 
 /* Messages List */
@@ -415,24 +414,25 @@ const sendQuery = async () => {
 }
 
 .rag-message-bubble {
-  border-radius: 12px;
-  padding: 14px 16px;
+  border-radius: 6px;
+  padding: 12px 14px;
   line-height: 1.5;
-  font-size: 14px;
+  font-size: 13px;
   word-wrap: break-word;
 }
 
 .rag-message-bubble.user {
   background: black;
   color: white;
-  border: 2px solid black;
-  font-weight: 500;
+  border: none;
+  font-weight: 400;
+  max-width: 80%;
 }
 
 .rag-message-bubble.assistant {
   background: #f5f5f5;
   color: #333;
-  border: 2px solid #ddd;
+  border: 1px solid #e0e0e0;
   text-align: left;
 }
 
@@ -682,23 +682,23 @@ const sendQuery = async () => {
 
 /* Input Section */
 .rag-input-section {
-  padding: 16px 20px;
+  padding: 14px 16px;
   background: white;
   border-top: 2px solid black;
 }
 
 .rag-input-wrapper {
   display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .rag-input {
   flex: 1;
-  padding: 12px 16px;
-  border: 2px solid black;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
   font-family: inherit;
   transition: all 0.2s ease;
   background: white;
@@ -707,7 +707,8 @@ const sendQuery = async () => {
 
 .rag-input:focus {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+  border-color: black;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.05);
 }
 
 .rag-input:disabled {
@@ -721,26 +722,23 @@ const sendQuery = async () => {
 }
 
 .rag-send-btn {
-  padding: 12px 24px;
+  padding: 10px 18px;
   background: black;
   color: white;
-  border: 2px solid black;
-  border-radius: 8px;
-  font-size: 14px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 80px;
+  min-width: 70px;
 }
 
 .rag-send-btn:hover:not(:disabled) {
-  background: white;
-  color: black;
-  transform: translate(2px, 2px);
-  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 0.1);
+  background: #333;
 }
 
 .rag-send-btn:disabled {
