@@ -1,0 +1,28 @@
+{
+  "name": "portfolio-rag-backend",
+  "version": "1.0.0",
+  "description": "RAG application using Pinecone and Google Gemini for portfolio Q&A",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node src/server.js",
+    "ingest": "node src/ingestData.js",
+    "start": "node src/server.js"
+  },
+  "keywords": [
+    "rag",
+    "pinecone",
+    "gemini",
+    "portfolio"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@pinecone-database/pinecone": "^6.1.3",
+    "axios": "^1.13.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1"
+  }
+}

@@ -1,0 +1,11 @@
+src/ingestData.js
+src/extractMarkdownAndCode.js
+src/extractPdfs.js
+src/checkAvailableModels.js
+src/listModels.js
+src/generateModelReport.js
+node_modules/
+.git/
+.env
+.env.local
+.env.*.local

@@ -1,0 +1,9 @@
+.vercel
+dist
+node_modules
+.git
+.env
+.env.local
+.env.*.local
+src/**/*.spec.js
+src/**/*.test.js

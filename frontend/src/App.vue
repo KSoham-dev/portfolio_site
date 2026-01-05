@@ -1,12 +1,16 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
 import projectDisplay from '/src/components/projectDisplay.vue';
+import RAGChat from '/src/components/RAGChat.vue';
 import { getIconName, getIconCdnUrl } from '/iconutils.js';
 
 // State to control the visibility of the welcome screen
 const isLoading = ref(true);
 // State to show the explicit "click to enter" message
 const showExplicitMessage = ref(false);
+
+// State for RAG chat modal
+const showRAGModal = ref(false);
 
 const visibleSections = ref({});
 let observer = null;
@@ -587,6 +591,38 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- RAG Chat Button -->
+      <button
+        @click="showRAGModal = true"
+        class="fixed bottom-8 right-8 z-40 w-14 h-14 rounded-full bg-black text-white shadow-lg hover:bg-gray-800 transition-all duration-300 flex items-center justify-center text-2xl hover:scale-110"
+        title="Ask me anything"
+      >
+        💬
+      </button>
+
+      <!-- RAG Modal Overlay and Container -->
+      <div v-if="showRAGModal" class="fixed inset-0 z-50 flex items-center justify-center">
+        <!-- Backdrop with blur -->
+        <div
+          @click="showRAGModal = false"
+          class="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        ></div>
+        <!-- Modal Content -->
+        <div class="relative bg-white rounded-lg shadow-2xl w-full max-w-2xl h-[90vh] mx-4 flex flex-col z-50">
+          <!-- Close Button -->
+          <button
+            @click="showRAGModal = false"
+            class="absolute top-4 right-4 z-10 text-gray-500 hover:text-black transition-colors"
+          >
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+          <!-- RAG Chat Component -->
+          <RAGChat :is-modal="true" />
         </div>
       </div>
     </main>
