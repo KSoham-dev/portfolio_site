@@ -22,10 +22,31 @@ let messageTimeoutId = null; // To hold the ID of our 4-second timeout
 // Next/Previous section navigation
 const currentSectionIndex = ref(0);
 const isTransitioning = ref(false);
+const instantReveal = ref(false);
 let clickAudio = null;
 let transitionScrollTimeoutId = null;
 
+// Mute toggle for the navigation click sound, remembered across visits
+const isMuted = ref(false);
+try {
+  isMuted.value = localStorage.getItem('portfolio-muted') === 'true';
+} catch (e) {
+  // localStorage unavailable (e.g. private browsing) - default to unmuted
+}
+
+const toggleMute = () => {
+  isMuted.value = !isMuted.value;
+  try {
+    localStorage.setItem('portfolio-muted', String(isMuted.value));
+  } catch (e) {
+    // ignore persistence failures
+  }
+  // Only plays if we just unmuted - confirms sound is back on.
+  playClickSound();
+};
+
 const playClickSound = () => {
+  if (isMuted.value) return;
   try {
     if (!clickAudio) {
       clickAudio = new Audio('/assets/audio/click-sound.mp3');
@@ -47,11 +68,34 @@ const goToSection = (index) => {
   playClickSound();
   isTransitioning.value = true;
 
-  // Jump to the new section once the curtain has fully covered the screen
+  // Jump to the new section once the curtain has fully covered the screen.
+  // Note: we scroll via el.offsetTop/scrollTo rather than el.scrollIntoView()
+  // or getBoundingClientRect(), because scrollIntoView honors the page's
+  // `scroll-padding-top` (used for anchor clicks under the fixed navbar)
+  // and would stop short of the section's true top, while
+  // getBoundingClientRect would include the section's own fade-in
+  // `translate-y-10` transform (see below); offsetTop is a document-flow
+  // position unaffected by either.
   transitionScrollTimeoutId = setTimeout(() => {
     const el = document.getElementById(sectionIds[newIndex]);
     if (el) {
-      el.scrollIntoView({ behavior: 'auto', block: 'start' });
+      // The target section's own scroll-reveal fade/slide-up (see
+      // visibleSections + the "content-section" transition classes) is
+      // normally driven by the IntersectionObserver as the user scrolls
+      // past it - it hasn't fired yet for a section we're about to jump
+      // straight to. Snap it into its final visible state with no
+      // transition *before* scrolling, so it's already fully in place
+      // once the curtain opens, instead of fading/sliding in over the
+      // section's own 1s transition and showing the previous section
+      // through the gap.
+      instantReveal.value = true;
+      visibleSections.value[sectionIds[newIndex]] = true;
+      window.scrollTo({ top: el.offsetTop, left: 0, behavior: 'auto' });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          instantReveal.value = false;
+        });
+      });
     }
     currentSectionIndex.value = newIndex;
   }, 350);
@@ -411,6 +455,11 @@ onUnmounted(() => {
 
     <!-- Floating Next / Previous section navigation -->
     <div class="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 sm:gap-3">
+      <button @click="toggleMute" :aria-label="isMuted ? 'Unmute click sound' : 'Mute click sound'"
+        class="section-nav-arrow mute-toggle">
+        <i :class="isMuted ? 'ri-volume-mute-line' : 'ri-volume-up-line'"></i>
+      </button>
+
       <button @click="prevSection" :disabled="isTransitioning" aria-label="Previous section"
         class="section-nav-arrow">
         <i class="ri-arrow-left-line"></i>
@@ -439,43 +488,43 @@ onUnmounted(() => {
           <div v-if="isSocialMenuOpen" class="absolute bottom-full mb-4">
             <div
               class="flex flex-col items-center space-y-5 p-3 rounded-full bg-white/90 backdrop-blur-lg shadow-md border-2 border-black">
-              <a href="https://github.com/KSoham-dev" class="text-black hover:opacity-70 transition-opacity" target="_blank"><i
+              <a href="https://github.com/KSoham-dev" @click="playClickSound" class="text-black hover:opacity-70 transition-opacity" target="_blank"><i
                   class="ri-github-line text-3xl"></i></a>
-              <a href="https://www.linkedin.com/in/ksohamdev/" class="text-black hover:opacity-70 transition-opacity"
+              <a href="https://www.linkedin.com/in/ksohamdev/" @click="playClickSound" class="text-black hover:opacity-70 transition-opacity"
                 target="_blank"><i class="ri-linkedin-line text-3xl"></i></a>
               <a href="https://mail.google.com/mail/u/0/?fs=1&to=sohamkulkarni709@gmail.com&su=Hello&body=I+wanted+to+reach+out!&tf=cm"
-                class="text-black hover:opacity-70 transition-opacity" target="_blank"><i
+                @click="playClickSound" class="text-black hover:opacity-70 transition-opacity" target="_blank"><i
                   class="ri-mail-line text-3xl"></i></a>
-              <button @click="showRAGModal = true; isSocialMenuOpen = false"
+              <button @click="playClickSound(); showRAGModal = true; isSocialMenuOpen = false"
                 class="text-black hover:opacity-70 transition-opacity" title="Ask me anything"><i
                   class="ri-chat-ai-line text-3xl"></i></button>
             </div>
           </div>
         </transition>
 
-        <button @click="toggleSocialMenu"
+        <button @click="playClickSound(); toggleSocialMenu()"
           class="bg-white border-2 border-black rounded-lg text-black font-extra-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black flex items-center space-x-2">
           <i :class="isSocialMenuOpen ? 'ri-close-line' : 'ri-chat-3-line'" class="text-lg"></i>
           <span>{{ isSocialMenuOpen ? 'Close' : 'Connect' }}</span>
         </button>
       </div>
       <div class="hidden lg:flex items-center space-x-4">
-        <a href="https://github.com/KSoham-dev"
+        <a href="https://github.com/KSoham-dev" @click="playClickSound"
           class="w-14 h-14 bg-white/75 backdrop-blur-lg rounded-full shadow-md border-2 border-black flex items-center justify-center text-black hover:opacity-70 transition-opacity"
           target="_blank">
           <i class="ri-github-line text-3xl"></i>
         </a>
-        <a href="https://www.linkedin.com/in/ksohamdev/"
+        <a href="https://www.linkedin.com/in/ksohamdev/" @click="playClickSound"
           class="w-14 h-14 bg-white/75 backdrop-blur-lg rounded-full shadow-md border-2 border-black flex items-center justify-center text-black hover:opacity-70 transition-opacity"
           target="_blank">
           <i class="ri-linkedin-line text-3xl"></i>
         </a>
-        <a href="mailto:sohamkulkarni709@gmail.com"
+        <a href="mailto:sohamkulkarni709@gmail.com" @click="playClickSound"
           class="w-14 h-14 bg-white/75 backdrop-blur-lg rounded-full shadow-md border-2 border-black flex items-center justify-center text-black hover:opacity-70 transition-opacity"
           target="_blank">
           <i class="ri-mail-line text-3xl"></i>
         </a>
-        <button @click="showRAGModal = true"
+        <button @click="playClickSound(); showRAGModal = true"
           class="w-14 h-14 bg-white/75 backdrop-blur-lg rounded-full shadow-md border-2 border-black flex items-center justify-center text-black hover:opacity-70 transition-opacity"
           title="Ask me anything">
           <i class="ri-chat-ai-line text-3xl"></i>
@@ -488,7 +537,8 @@ onUnmounted(() => {
       <div id="home" :class="{
       'content-section min-h-screen px-4 pt-32 pb-4 lg:p-8 flex flex-col justify-center lg:flex-row lg:items-center transition-all duration-1000 ease-out': true,
       'opacity-100 translate-y-0': visibleSections.home,
-      'opacity-0 translate-y-10': !visibleSections.home && !visibleSections.projects
+      'opacity-0 translate-y-10': !visibleSections.home && !visibleSections.projects,
+      'no-reveal-transition': instantReveal
       }">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
@@ -523,7 +573,8 @@ onUnmounted(() => {
       <div id="projects" :class="{
       'content-section min-h-screen bg-black text-white p-4 lg:p-8 flex flex-col lg:flex-row items-center transition-all duration-1000 ease-out': true,
       'opacity-100 translate-y-0': visibleSections.projects,
-      'opacity-0 translate-y-10': !visibleSections.projects
+      'opacity-0 translate-y-10': !visibleSections.projects,
+      'no-reveal-transition': instantReveal
       }">
         <!-- Code Snippet Showcase -->
         <div class="code-window">
@@ -554,7 +605,8 @@ onUnmounted(() => {
       <div id="skills" :class="{
       'content-section min-h-screen bg-white p-4 lg:p-8 flex flex-col lg:flex-row items-center transition-all duration-1000 ease-out': true,
       'opacity-100 translate-y-0': visibleSections.skills,
-      'opacity-0 translate-y-10': !visibleSections.skills
+      'opacity-0 translate-y-10': !visibleSections.skills,
+      'no-reveal-transition': instantReveal
       }">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
@@ -584,7 +636,8 @@ onUnmounted(() => {
       <div id="journey" :class="{
       'content-section min-h-screen bg-black text-white p-4 lg:p-8 flex flex-col lg:flex-row items-center transition-all duration-1000 ease-out': true,
       'opacity-100 translate-y-0': visibleSections.journey,
-      'opacity-0 translate-y-10': !visibleSections.journey
+      'opacity-0 translate-y-10': !visibleSections.journey,
+      'no-reveal-transition': instantReveal
       }">
         <!-- Data Visualization Background Elements -->
         <svg class="data-viz-background" viewBox="0 0 400 300">
@@ -655,7 +708,7 @@ onUnmounted(() => {
         <div class="relative bg-white rounded-lg shadow-2xl w-full max-w-2xl h-[90vh] mx-4 flex flex-col z-50">
           <!-- Close Button -->
           <button
-            @click="showRAGModal = false"
+            @click="playClickSound(); showRAGModal = false"
             class="absolute top-4 right-4 z-10 text-gray-500 hover:text-black transition-colors"
           >
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1390,6 +1443,13 @@ body {
   }
 }
 
+/* Applied briefly while jumping to a section via Next/Previous, so its
+   fade/slide-up reveal snaps into place instantly instead of animating
+   in over its own 1s transition after the curtain opens. */
+.no-reveal-transition {
+  transition: none !important;
+}
+
 /* Curtain-wipe transition overlay for Next/Previous navigation */
 .section-transition-overlay {
   position: fixed;
@@ -1465,6 +1525,11 @@ body {
   box-shadow: 2px 2px 0px 0px rgba(102, 126, 234, 0.6);
 }
 
+.mute-toggle {
+  width: 48px;
+  padding: 0;
+}
+
 .section-nav-arrow:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -1509,6 +1574,11 @@ body {
     height: 42px;
     min-width: 42px;
     padding: 0 10px;
+  }
+
+  .mute-toggle {
+    width: 42px;
+    padding: 0;
   }
 
   .section-dots {
