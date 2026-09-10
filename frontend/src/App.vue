@@ -29,7 +29,7 @@ const playClickSound = () => {
   try {
     if (!clickAudio) {
       clickAudio = new Audio('/assets/audio/click-sound.mp3');
-      clickAudio.volume = 0.45;
+      clickAudio.volume = 0.18;
     }
     clickAudio.currentTime = 0;
     clickAudio.play().catch(() => {});
