@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
+import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import projectDisplay from '/src/components/projectDisplay.vue';
 import RAGChat from '/src/components/RAGChat.vue';
 import { getIconName, getIconCdnUrl } from '/iconutils.js';
@@ -14,7 +14,7 @@ const showRAGModal = ref(false);
 
 const visibleSections = ref({});
 let observer = null;
-const sectionIds = ['home', 'projects', 'skills', 'journey'];
+const sectionIds = ['home', 'projects', 'skills', 'journey', 'blog'];
 
 let audioContext = null;
 let messageTimeoutId = null; // To hold the ID of our 4-second timeout
@@ -393,6 +393,139 @@ const typeCode = async () => {
 };
 
 
+// Blog data
+const blogPosts = ref([
+  {
+    id: 'feature-engineering',
+    tag: 'Machine Learning',
+    title: 'Why Feature Engineering Still Beats Fancy Models',
+    date: 'Aug 2026',
+    readTime: '6 min read',
+    excerpt: 'A well-chosen feature will outrun a poorly-fed transformer every time. Here is what I keep relearning on real datasets.',
+    body: [
+      { type: 'p', text: "Every few months a new architecture shows up promising to make feature engineering obsolete. In practice, on the messy tabular datasets most of us actually work with, a thoughtfully engineered feature set still beats throwing raw columns at a bigger model. I learned this the hard way on a churn-prediction project where switching from raw timestamps to 'days since last purchase' improved recall more than three different model upgrades combined." },
+      { type: 'h2', text: 'Start with domain logic, not correlation matrices' },
+      { type: 'p', text: "It's tempting to let a correlation heatmap or SHAP plot tell you what matters. But those tools only rank what you already handed the model. If 'time since last login' isn't in your dataframe, no importance score will ever surface it. Spend the first hour with domain experts, not with pandas.corr()." },
+      { type: 'code', lang: 'python', text: "# Turning a raw timestamp into signal the model can actually use\ndf['days_since_last_purchase'] = (\n    pd.Timestamp.now() - df['last_purchase_at']\n).dt.days\n\ndf['purchase_frequency'] = (\n    df.groupby('customer_id')['order_id'].transform('count')\n    / df['days_since_last_purchase'].clip(lower=1)\n)" },
+      { type: 'h2', text: 'Ratios and rates beat raw counts' },
+      { type: 'p', text: "Raw counts are rarely stationary - a customer active for two years will naturally have more orders than one active for two months. Normalizing counts into rates (orders per active month, spend per session) makes the feature comparable across the population, which is usually what the model needs to separate classes cleanly." },
+      { type: 'p', text: "None of this replaces a good model. But I've found the ceiling on a well-engineered feature set with a plain gradient-boosted tree is often higher than the ceiling on raw features with a deep network, and it gets there in a fraction of the training time." }
+    ]
+  },
+  {
+    id: 'imbalanced-data',
+    tag: 'Data Science',
+    title: 'Handling Imbalanced Datasets Without Losing Your Mind',
+    date: 'Jul 2026',
+    readTime: '7 min read',
+    excerpt: 'Accuracy lies when 98% of your data belongs to one class. A field guide to the techniques that actually move the needle.',
+    body: [
+      { type: 'p', text: "The first time I trained a fraud-detection model, it hit 99.1% accuracy and detected exactly zero fraud cases. That's the imbalanced-data trap: when one class dominates, a model can look brilliant on the wrong metric while learning nothing useful." },
+      { type: 'h2', text: 'Fix the metric before you fix the data' },
+      { type: 'p', text: 'Before touching the dataset, swap accuracy for precision, recall, and PR-AUC. Accuracy rewards a model for predicting the majority class every time. PR-AUC specifically cares about how well you rank the minority class, which is usually the one you actually care about.' },
+      { type: 'h2', text: 'Resampling, but carefully' },
+      { type: 'p', text: "SMOTE and its variants can help, but they synthesize points in feature space that may not correspond to anything real - especially with categorical or high-dimensional data. I've had more consistent luck with class-weighted loss functions, which nudge the model without inventing data." },
+      { type: 'code', lang: 'python', text: "from sklearn.utils.class_weight import compute_class_weight\n\nweights = compute_class_weight(\n    class_weight='balanced',\n    classes=np.unique(y_train),\n    y=y_train\n)\nclass_weight_dict = dict(zip(np.unique(y_train), weights))\n\nmodel = XGBClassifier(scale_pos_weight=weights[1] / weights[0])\nmodel.fit(X_train, y_train)" },
+      { type: 'p', text: "Whatever technique you choose, always evaluate on an untouched, naturally-imbalanced validation set. Resampling the training data is fine; resampling your judgment of how the model performs in the real world is not." }
+    ]
+  },
+  {
+    id: 'boosting-libraries',
+    tag: 'ML Engineering',
+    title: 'XGBoost vs LightGBM vs CatBoost: Picking Your Boosting Library',
+    date: 'Jun 2026',
+    readTime: '8 min read',
+    excerpt: 'Three excellent gradient-boosting libraries, three very different defaults. Here is how I decide which one to reach for.',
+    body: [
+      { type: 'p', text: "Gradient-boosted trees still win a disproportionate share of tabular-data competitions and production pipelines, and for good reason - they're fast, interpretable-ish, and forgiving of messy features. The question I get asked most is which library to start with." },
+      { type: 'h2', text: 'XGBoost: the reliable default' },
+      { type: 'p', text: "XGBoost is the one I reach for when I need something battle-tested with a huge community and predictable behavior across environments. Its regularization options (L1/L2 on leaf weights) make it a good first line of defense against overfitting on smaller datasets." },
+      { type: 'h2', text: 'LightGBM: when data gets large' },
+      { type: 'p', text: "LightGBM's leaf-wise growth (instead of level-wise) trains noticeably faster on large datasets and handles high-cardinality categoricals more gracefully out of the box. The tradeoff is it can overfit small datasets more easily if you leave max_depth unconstrained." },
+      { type: 'h2', text: 'CatBoost: when categoricals dominate' },
+      { type: 'p', text: "If your dataset is mostly categorical columns with lots of unique values, CatBoost's ordered target encoding saves you from writing your own encoding pipeline and from the target leakage that naive encodings introduce." },
+      { type: 'code', lang: 'python', text: "# A reasonable starting point for a quick benchmark across all three\nfor name, Model in [('xgb', XGBClassifier), ('lgb', LGBMClassifier), ('cat', CatBoostClassifier)]:\n    model = Model(n_estimators=500, learning_rate=0.05, random_state=42)\n    model.fit(X_train, y_train)\n    print(name, roc_auc_score(y_val, model.predict_proba(X_val)[:, 1]))" },
+      { type: 'p', text: "In practice I benchmark all three on a held-out split before committing - the 'best' library changes with dataset size, categorical density, and how much time you have for hyperparameter tuning." }
+    ]
+  },
+  {
+    id: 'notebook-to-production',
+    tag: 'MLOps',
+    title: 'From Notebook to Production: Lessons Learned the Hard Way',
+    date: 'May 2026',
+    readTime: '9 min read',
+    excerpt: 'A model that works in a Jupyter cell is a prototype, not a product. The gap between the two taught me more than any course did.',
+    body: [
+      { type: 'p', text: "My first deployed model broke in production within a week - not because the model was wrong, but because the notebook that trained it and the service that served it disagreed about how a column was encoded. Nobody warns you that the hardest part of ML engineering is rarely the ML." },
+      { type: 'h2', text: 'Pin your preprocessing, not just your model' },
+      { type: 'p', text: "A pickled model file is useless without the exact preprocessing pipeline that produced its training features. I now wrap preprocessing and model into a single sklearn Pipeline (or an equivalent) and version them together, so 'the model' and 'the transform' can never drift apart." },
+      { type: 'code', lang: 'python', text: "pipeline = Pipeline([\n    ('preprocess', ColumnTransformer([\n        ('num', StandardScaler(), numeric_cols),\n        ('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols),\n    ])),\n    ('model', XGBClassifier(n_estimators=300)),\n])\npipeline.fit(X_train, y_train)\njoblib.dump(pipeline, 'model_v3.joblib')" },
+      { type: 'h2', text: 'Monitor inputs, not just outputs' },
+      { type: 'p', text: "Model performance dashboards are useless if the ground truth arrives weeks later. What catches problems early is watching the input distribution - if a feature's mean or missing-rate suddenly shifts, something upstream broke, and you want to know before the accuracy metric quietly decays." },
+      { type: 'p', text: "None of this is glamorous, and none of it shows up in a Kaggle leaderboard. But it's the difference between a model that works once and a model that keeps working." }
+    ]
+  },
+  {
+    id: 'attention-explained',
+    tag: 'Deep Learning',
+    title: 'Attention Mechanisms, Explained Without the Math Headache',
+    date: 'Apr 2026',
+    readTime: '7 min read',
+    excerpt: 'Forget the equations for a second. Attention is just a very structured way of asking "what should I be looking at right now?"',
+    body: [
+      { type: 'p', text: "Attention gets introduced with a wall of matrix multiplications, and that's a shame, because the underlying idea is almost embarrassingly intuitive: for every word, decide how much to 'pay attention' to every other word before deciding what it means in context." },
+      { type: 'h2', text: 'A translation analogy' },
+      { type: 'p', text: "Imagine translating 'the bank was steep' versus 'the bank approved the loan'. The word 'bank' needs different context each time - 'steep' pulls it toward a riverbank, 'loan' pulls it toward a financial institution. Attention is the mechanism that lets the model look at the surrounding words and weight them by relevance before forming its final representation of 'bank'." },
+      { type: 'h2', text: 'Queries, keys, and values - as a search engine' },
+      { type: 'p', text: "The Query/Key/Value framing clicked for me once I thought of it as a search engine. The Query is your search term. Every word in the sentence offers a Key (how it advertises itself) and a Value (the actual content it contributes). Attention scores each Key against your Query, and the output is a weighted blend of Values - weighted more heavily toward whichever words' Keys matched best." },
+      { type: 'code', lang: 'python', text: "# Simplified single-head attention, stripped of batching/masking\nscores = (Q @ K.T) / np.sqrt(d_k)      # how well each key matches the query\nweights = softmax(scores, axis=-1)     # normalize into a distribution\noutput = weights @ V                    # blend values by attention weight" },
+      { type: 'p', text: "Multi-head attention is just running several of these searches in parallel, each free to learn a different notion of 'relevance' - one head might track syntax, another might track long-range topic coherence. Stack enough of these and you get a model that builds context almost the way we do: by constantly re-weighing what matters given everything around it." }
+    ]
+  }
+]);
+
+const showBlogReader = ref(false);
+const activeBlogPost = ref(null);
+const readerScrollEl = ref(null);
+const activeBlogIndex = computed(() =>
+  activeBlogPost.value ? blogPosts.value.findIndex((p) => p.id === activeBlogPost.value.id) : -1
+);
+
+const resetReaderScroll = () => {
+  nextTick(() => {
+    if (readerScrollEl.value) readerScrollEl.value.scrollTop = 0;
+  });
+};
+
+const openBlogPost = (post) => {
+  playClickSound();
+  activeBlogPost.value = post;
+  showBlogReader.value = true;
+  resetReaderScroll();
+};
+
+const closeBlogReader = () => {
+  playClickSound();
+  showBlogReader.value = false;
+};
+
+const readNextPost = () => {
+  if (activeBlogIndex.value === -1) return;
+  playClickSound();
+  const nextIndex = (activeBlogIndex.value + 1) % blogPosts.value.length;
+  activeBlogPost.value = blogPosts.value[nextIndex];
+  resetReaderScroll();
+};
+
+const readPrevPost = () => {
+  if (activeBlogIndex.value === -1) return;
+  playClickSound();
+  const total = blogPosts.value.length;
+  const prevIndex = (activeBlogIndex.value - 1 + total) % total;
+  activeBlogPost.value = blogPosts.value[prevIndex];
+  resetReaderScroll();
+};
+
 onUnmounted(() => {
   clearTimeout(messageTimeoutId); // Clean up the timer
   clearTimeout(transitionScrollTimeoutId);
@@ -444,6 +577,10 @@ onUnmounted(() => {
           <a href="#journey" @click.prevent="goToSection(3)" :class="{ 'nav-link-active': currentSectionIndex === 3 }"
             class="nav-link w-28 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
             Journey
+          </a>
+          <a href="#blog" @click.prevent="goToSection(4)" :class="{ 'nav-link-active': currentSectionIndex === 4 }"
+            class="nav-link w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
+            Blog
           </a>
         </div>
       </div>
@@ -693,6 +830,77 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="blog" :class="{
+      'content-section min-h-screen bg-white p-4 lg:p-8 flex flex-col items-center justify-center transition-all duration-1000 ease-out': true,
+      'opacity-100 translate-y-0': visibleSections.blog,
+      'opacity-0 translate-y-10': !visibleSections.blog,
+      'no-reveal-transition': instantReveal
+      }">
+        <!-- Animated Background Grid -->
+        <div class="grid-background"></div>
+
+        <div class="w-full max-w-5xl relative z-10">
+          <div class="text-center mb-10 lg:mb-14">
+            <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Blog</h1>
+            <p class="text-xl">Notes on data science, machine learning,</p>
+            <p class="text-xl">and the occasional production war story.</p>
+          </div>
+
+          <div class="blog-grid-container">
+            <div class="blog-grid">
+              <button v-for="post in blogPosts" :key="post.id" @click="openBlogPost(post)" class="blog-card">
+                <span class="blog-card-tag">{{ post.tag }}</span>
+                <h3 class="blog-card-title">{{ post.title }}</h3>
+                <p class="blog-card-excerpt">{{ post.excerpt }}</p>
+                <div class="blog-card-footer">
+                  <span class="blog-card-meta">{{ post.date }} · {{ post.readTime }}</span>
+                  <span class="blog-card-cta">Read <i class="ri-arrow-right-line"></i></span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Blog Reader Modal -->
+      <div v-if="showBlogReader && activeBlogPost" class="fixed inset-0 z-50 flex items-center justify-center">
+        <div @click="closeBlogReader" class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+
+        <div class="reader-modal relative z-10">
+          <button @click="closeBlogReader" class="reader-close" aria-label="Close article">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+
+          <div class="reader-scroll" ref="readerScrollEl">
+            <span class="reader-tag">{{ activeBlogPost.tag }}</span>
+            <h1 class="reader-title">{{ activeBlogPost.title }}</h1>
+            <p class="reader-meta">{{ activeBlogPost.date }} · {{ activeBlogPost.readTime }}</p>
+
+            <div class="reader-body">
+              <template v-for="(block, idx) in activeBlogPost.body" :key="idx">
+                <h2 v-if="block.type === 'h2'" class="reader-h2">{{ block.text }}</h2>
+                <pre v-else-if="block.type === 'code'" class="reader-code"><code>{{ block.text }}</code></pre>
+                <p v-else class="reader-p">{{ block.text }}</p>
+              </template>
+            </div>
+          </div>
+
+          <div class="reader-footer">
+            <button @click="readPrevPost" class="section-nav-arrow" aria-label="Previous article">
+              <i class="ri-arrow-left-line"></i>
+              <span class="hidden sm:inline">Prev</span>
+            </button>
+            <span class="reader-footer-count">{{ activeBlogIndex + 1 }} / {{ blogPosts.length }}</span>
+            <button @click="readNextPost" class="section-nav-arrow section-nav-arrow-next" aria-label="Next article">
+              <span class="hidden sm:inline">Next</span>
+              <i class="ri-arrow-right-line"></i>
+            </button>
           </div>
         </div>
       </div>
@@ -1152,6 +1360,230 @@ body {
 
 .timeline-card .text-gray-400 {
   color: rgba(167, 139, 250, 0.8) !important;
+}
+
+/* Blog Section */
+.blog-grid-container {
+  max-height: 52vh;
+  overflow-y: auto;
+  padding: 4px 4px 12px;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.blog-grid-container::-webkit-scrollbar {
+  display: none;
+}
+
+.blog-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+.blog-card {
+  text-align: left;
+  background: #ffffff;
+  border: 2px solid #000;
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  cursor: pointer;
+  box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 1);
+  transition: all 0.25s ease;
+}
+
+.blog-card:hover {
+  transform: translate(3px, 3px);
+  box-shadow: 3px 3px 0px 0px rgba(0, 0, 0, 1);
+  background: #fafafa;
+}
+
+.blog-card-tag {
+  display: inline-block;
+  width: fit-content;
+  background: #000;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 9999px;
+}
+
+.blog-card-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #000;
+}
+
+.blog-card-excerpt {
+  font-size: 1rem;
+  color: #4b5563;
+  line-height: 1.5;
+  flex-grow: 1;
+}
+
+.blog-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.blog-card-meta {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.blog-card-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #000;
+}
+
+/* Blog Reader Modal */
+.reader-modal {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
+  width: 100%;
+  max-width: 720px;
+  max-height: 88vh;
+  margin: 0 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.reader-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 2px solid #000;
+  border-radius: 50%;
+  color: #000;
+  transition: all 0.2s ease;
+}
+
+.reader-close:hover {
+  transform: rotate(90deg);
+}
+
+.reader-scroll {
+  padding: 48px 40px 24px;
+  overflow-y: auto;
+}
+
+.reader-tag {
+  display: inline-block;
+  background: #000;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  margin-bottom: 16px;
+}
+
+.reader-title {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #000;
+  margin-bottom: 10px;
+}
+
+.reader-meta {
+  font-size: 0.95rem;
+  color: #6b7280;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #000;
+}
+
+.reader-body {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  color: #1f2937;
+}
+
+.reader-p {
+  margin-bottom: 20px;
+}
+
+.reader-h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #000;
+  margin: 32px 0 16px;
+}
+
+.reader-code {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border: 2px solid #000;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  overflow-x: auto;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.reader-code code {
+  color: #9cdcfe;
+}
+
+.reader-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 2px solid #000;
+  background: #fafafa;
+}
+
+.reader-footer-count {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+@media (max-width: 768px) {
+  .blog-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reader-scroll {
+    padding: 40px 24px 20px;
+  }
+
+  .reader-title {
+    font-size: 1.75rem;
+  }
+
+  .reader-body {
+    font-size: 1.05rem;
+  }
 }
 
 @media (max-width: 640px) {
