@@ -12,8 +12,6 @@ const showExplicitMessage = ref(false);
 // State for RAG chat modal
 const showRAGModal = ref(false);
 
-const visibleSections = ref({});
-let observer = null;
 const sectionIds = ['home', 'projects', 'skills', 'journey', 'blog'];
 
 // Static scatter for the Home section's ambient floating particles -
@@ -28,23 +26,53 @@ const homeParticles = Array.from({ length: 14 }, () => ({
 let audioContext = null;
 let messageTimeoutId = null; // To hold the ID of our 4-second timeout
 
-// Next/Previous section navigation
+// Next/Previous section navigation - a horizontal slider. currentSectionIndex
+// drives the slide position directly (see .slider-track's transform binding
+// in the template); there is no scroll position or IntersectionObserver to
+// keep in sync with it.
 const currentSectionIndex = ref(0);
 const isTransitioning = ref(false);
-const instantReveal = ref(false);
 let clickAudio = null;
-let transitionScrollTimeoutId = null;
-let overlayResetTimeoutId = null;
-// Must track the strip-wipe CSS animation (see .transition-strip/@keyframes
-// strip-wipe): 7 strips, each staggered 0.05s later than the last, each
-// running the full 0.9s animation - so the last strip finishes at
-// (7-1)*0.05s + 0.9s = 1.2s.
-const STRIP_COUNT = 7;
-const STRIP_STAGGER_MS = 50;
-const STRIP_ANIMATION_MS = 900;
-const STRIP_TOTAL_DURATION_MS = (STRIP_COUNT - 1) * STRIP_STAGGER_MS + STRIP_ANIMATION_MS;
+// Must match .slider-track's CSS transition-duration.
+const SLIDE_TRANSITION_MS = 600;
+let slideTransitionTimeoutId = null;
 
-// Mute toggle for the navigation click sound, remembered across visits
+// Audio: a continuously looping background track (the uploaded song) plus
+// a short, distinct click sound (the original tabla percussion clip) -
+// two separate audio elements, both gated by the one mute toggle.
+let bgmAudio = null;
+const BGM_VOLUME = 0.14;
+
+const startBgm = () => {
+  if (isMuted.value) return;
+  try {
+    if (!bgmAudio) {
+      bgmAudio = new Audio('/assets/audio/click-sound.mp3');
+      bgmAudio.loop = true;
+      bgmAudio.volume = BGM_VOLUME;
+    }
+    bgmAudio.play().catch(() => {});
+  } catch (e) {
+    console.error('Could not play background music.', e);
+  }
+};
+
+const playClickSound = () => {
+  if (isMuted.value) return;
+  try {
+    if (!clickAudio) {
+      clickAudio = new Audio('/assets/audio/soft-tabla.mp3');
+      clickAudio.volume = 0.5;
+    }
+    clickAudio.currentTime = 0;
+    clickAudio.play().catch(() => {});
+  } catch (e) {
+    console.error('Could not play click sound.', e);
+  }
+};
+
+// Mute toggle - silences both the background music and the click sound,
+// remembered across visits.
 const isMuted = ref(false);
 try {
   isMuted.value = localStorage.getItem('portfolio-muted') === 'true';
@@ -60,91 +88,29 @@ const toggleMute = () => {
     // ignore persistence failures
   }
   if (isMuted.value) {
-    // Muting only gated *future* playClickSound() calls - it never
-    // stopped a sound already in progress, so muting mid-playback looked
-    // broken (the sound kept going for up to CLICK_SOUND_DURATION_MS).
-    // Silence it immediately instead.
-    clearTimeout(clickAudioStopTimeoutId);
+    if (bgmAudio) bgmAudio.pause();
     if (clickAudio) clickAudio.pause();
   } else {
-    // Confirmation click that sound is back on.
-    playClickSound();
-  }
-};
-
-let clickAudioStopTimeoutId = null;
-const CLICK_SOUND_DURATION_MS = 2200; // plays as a short accent, not the full track
-
-const playClickSound = () => {
-  if (isMuted.value) return;
-  try {
-    if (!clickAudio) {
-      clickAudio = new Audio('/assets/audio/click-sound.mp3');
-      clickAudio.volume = 0.35;
-    }
-    clearTimeout(clickAudioStopTimeoutId);
-    clickAudio.currentTime = 0;
-    clickAudio.play().catch(() => {});
-    // Cap playback so a click always reads as a quick accent - without this
-    // the full ~70s track would keep playing quietly in the background
-    // (and restart from 0 on every click), which reads as "no sound" when
-    // a click lands during a long stretch instead of near the hook.
-    clickAudioStopTimeoutId = setTimeout(() => {
-      clickAudio.pause();
-    }, CLICK_SOUND_DURATION_MS);
-  } catch (e) {
-    console.error('Could not play click sound.', e);
+    startBgm();
+    playClickSound(); // confirmation click
   }
 };
 
 const goToSection = (index) => {
-  if (isTransitioning.value) return;
   const total = sectionIds.length;
   const newIndex = ((index % total) + total) % total;
   if (newIndex === currentSectionIndex.value) return;
 
   playClickSound();
+  currentSectionIndex.value = newIndex;
+
+  // Briefly disable the nav controls while the slide animates, so a rapid
+  // double-click doesn't queue up a disorienting jump.
   isTransitioning.value = true;
-
-  // Jump to the new section once the curtain has fully covered the screen.
-  // Note: we scroll via el.offsetTop/scrollTo rather than el.scrollIntoView()
-  // or getBoundingClientRect(), because scrollIntoView honors the page's
-  // `scroll-padding-top` (used for anchor clicks under the fixed navbar)
-  // and would stop short of the section's true top, while
-  // getBoundingClientRect would include the section's own fade-in
-  // `translate-y-10` transform (see below); offsetTop is a document-flow
-  // position unaffected by either.
-  transitionScrollTimeoutId = setTimeout(() => {
-    const el = document.getElementById(sectionIds[newIndex]);
-    if (el) {
-      // The target section's own scroll-reveal fade/slide-up (see
-      // visibleSections + the "content-section" transition classes) is
-      // normally driven by the IntersectionObserver as the user scrolls
-      // past it - it hasn't fired yet for a section we're about to jump
-      // straight to. Snap it into its final visible state with no
-      // transition *before* scrolling, so it's already fully in place
-      // once the curtain opens, instead of fading/sliding in over the
-      // section's own 1s transition and showing the previous section
-      // through the gap.
-      instantReveal.value = true;
-      visibleSections.value[sectionIds[newIndex]] = true;
-      window.scrollTo({ top: el.offsetTop, left: 0, behavior: 'auto' });
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          instantReveal.value = false;
-        });
-      });
-    }
-    currentSectionIndex.value = newIndex;
-    // 700ms: the point at which every strip (including the last, most
-    // delayed one - see STRIP_MAX_DELAY_MS below) has converged and is
-    // holding fully closed, per the strip-wipe keyframes' 40%-60% hold.
-  }, 700);
-
-  clearTimeout(overlayResetTimeoutId);
-  overlayResetTimeoutId = setTimeout(() => {
+  clearTimeout(slideTransitionTimeoutId);
+  slideTransitionTimeoutId = setTimeout(() => {
     isTransitioning.value = false;
-  }, STRIP_TOTAL_DURATION_MS);
+  }, SLIDE_TRANSITION_MS);
 };
 
 const nextSection = () => goToSection(currentSectionIndex.value + 1);
@@ -180,6 +146,7 @@ const enterSite = () => {
     audioContext.resume();
   }
   playIntroSound();
+  startBgm();
 
   // Switch from the welcome screen to the main content
   isLoading.value = false;
@@ -233,26 +200,6 @@ onMounted(() => {
 
   // Disable right click
   document.addEventListener('contextmenu', (e) => e.preventDefault());
-
-  // IntersectionObserver logic remains the same
-  observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        visibleSections.value[entry.target.id] = entry.isIntersecting;
-        if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
-          const idx = sectionIds.indexOf(entry.target.id);
-          if (idx !== -1) currentSectionIndex.value = idx;
-        }
-      });
-    }, { threshold: [0.1, 0.5] }
-  );
-
-  sectionIds.forEach(id => {
-    const element = document.getElementById(id);
-    if (element) {
-      observer.observe(element);
-    }
-  });
 
   // Keyboard navigation for next/previous section
   document.addEventListener('keydown', handleKeydownNav);
@@ -570,16 +517,12 @@ const readPrevPost = () => {
 
 onUnmounted(() => {
   clearTimeout(messageTimeoutId); // Clean up the timer
-  clearTimeout(transitionScrollTimeoutId);
-  clearTimeout(clickAudioStopTimeoutId);
-  clearTimeout(overlayResetTimeoutId);
+  clearTimeout(slideTransitionTimeoutId);
+  if (bgmAudio) bgmAudio.pause();
   document.removeEventListener('mousedown', enterSite);
   document.removeEventListener('keydown', enterSite);
   document.removeEventListener('mousedown', handleClickOutside);
   document.removeEventListener('keydown', handleKeydownNav);
-  if (observer) {
-    observer.disconnect();
-  }
 });
 </script>
 
@@ -628,13 +571,6 @@ onUnmounted(() => {
           </a>
         </div>
       </div>
-    </div>
-
-    <!-- Strip-wipe transition overlay, shown while jumping between sections:
-         alternating horizontal strips converge from left/right to cover the
-         screen, hold, then part again to reveal the new section. -->
-    <div class="section-transition-overlay" :class="{ active: isTransitioning }">
-      <span v-for="n in STRIP_COUNT" :key="n" class="transition-strip" :style="{ animationDelay: (n - 1) * STRIP_STAGGER_MS + 'ms' }"></span>
     </div>
 
     <!-- Floating Next / Previous section navigation -->
@@ -717,13 +653,10 @@ onUnmounted(() => {
 
     </div>
 
-    <main>
-      <div id="home" :class="{
-      'content-section min-h-screen px-4 pt-32 pb-4 lg:p-8 flex flex-col justify-center lg:flex-row lg:items-center transition-all duration-1000 ease-out': true,
-      'opacity-100 translate-y-0': visibleSections.home,
-      'opacity-0 translate-y-10': !visibleSections.home && !visibleSections.projects,
-      'no-reveal-transition': instantReveal
-      }">
+    <main class="slider-viewport">
+      <div class="slider-track" :style="{ transform: `translateX(-${currentSectionIndex * 100}%)` }">
+      <div id="home" class="slide">
+      <div class="content-section min-h-full px-4 pt-32 pb-12 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
 
@@ -738,10 +671,6 @@ onUnmounted(() => {
         </div>
 
         <div class="w-full text-center lg:text-left lg:w-1/2 lg:p-4 relative z-10">
-          <span class="status-badge">
-            <span class="status-dot"></span>
-            Currently {{ educationData[0].degree }} @ {{ educationData[0].institution }}
-          </span>
           <h1 class="text-5xl sm:text-6xl lg:text-8xl font-bold mb-4 leading-tight">
             <p> Soham </p> Kulkarni
           </h1>
@@ -750,54 +679,27 @@ onUnmounted(() => {
             <p>specializing in building intelligent systems,</p>
             <p>with a firm grounding in mathematics</p>
           </div>
-
-          <div class="hero-stats">
-            <div class="hero-stat">
-              <span class="hero-stat-num">3</span>
-              <span class="hero-stat-label">Featured Projects</span>
-            </div>
-            <div class="hero-stat">
-              <span class="hero-stat-num">16</span>
-              <span class="hero-stat-label">Tools &amp; Frameworks</span>
-            </div>
-            <div class="hero-stat">
-              <span class="hero-stat-num">5</span>
-              <span class="hero-stat-label">Blog Articles</span>
-            </div>
-          </div>
-
-          <div class="hero-cta">
-            <button @click="goToSection(1)" class="hero-cta-primary">
-              View Projects <i class="ri-arrow-right-line"></i>
-            </button>
-            <button @click="playClickSound(); showRAGModal = true" class="hero-cta-secondary">
-              <i class="ri-chat-ai-line"></i> Ask Me Anything
-            </button>
-          </div>
         </div>
         <div class="w-full lg:w-1/2 p-4 flex justify-center items-center relative z-10">
-          <div 
+          <div
             class="reveal-container"
             @mouseenter="startReveal"
             @mouseleave="reverseReveal">
             <!-- Original photo -->
             <img src="/assets/img/profile.jpg" alt="Profile photo" class="reveal-image original-image">
             <!-- Dotted overlay that reveals on hover -->
-            <img 
-              src="/assets/img/dotted_portrait.png" 
-              alt="Dotted portrait" 
+            <img
+              src="/assets/img/dotted_portrait.png"
+              alt="Dotted portrait"
               class="reveal-image dotted-overlay"
               :style="{ clipPath: `inset(0 ${100 - revealProgress}% 0 0)` }">
           </div>
         </div>
       </div>
+      </div>
 
-      <div id="projects" :class="{
-      'content-section min-h-screen bg-black text-white p-4 lg:p-8 flex flex-col lg:flex-row items-center transition-all duration-1000 ease-out': true,
-      'opacity-100 translate-y-0': visibleSections.projects,
-      'opacity-0 translate-y-10': !visibleSections.projects,
-      'no-reveal-transition': instantReveal
-      }">
+      <div id="projects" class="slide">
+      <div class="content-section min-h-full bg-black text-white px-4 pt-32 pb-12 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <!-- Code Snippet Showcase -->
         <div class="code-window">
           <div class="code-window-header">
@@ -810,7 +712,7 @@ onUnmounted(() => {
           </div>
           <pre class="code-content"><code>{{ displayedCode }}</code></pre>
         </div>
-        
+
         <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
           <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Projects</h1>
           <p>This selection of projects demonstrates</p>
@@ -823,16 +725,13 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+      </div>
 
-      <div id="skills" :class="{
-      'content-section min-h-screen bg-white p-4 lg:p-8 flex flex-col lg:flex-row items-center transition-all duration-1000 ease-out': true,
-      'opacity-100 translate-y-0': visibleSections.skills,
-      'opacity-0 translate-y-10': !visibleSections.skills,
-      'no-reveal-transition': instantReveal
-      }">
+      <div id="skills" class="slide">
+      <div class="content-section min-h-full bg-white px-4 pt-32 pb-12 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
-        
+
         <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
           <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Skills</h1>
           <p class="text-xl">A comprehensive toolkit of technologies</p>
@@ -841,7 +740,7 @@ onUnmounted(() => {
         </div>
         <div class="w-full lg:w-1/2 p-4 flex justify-center items-center relative z-10">
           <div class="skills-circle-container-large">
-            <div v-for="(skill, index) in skills" :key="skill.name" 
+            <div v-for="(skill, index) in skills" :key="skill.name"
                  :class="['skill-icon-large', { 'blurred': hoveredSkill && hoveredSkill !== skill.name }]"
                  :style="getSkillPosition(index, skills.length)"
                  @mouseenter="hoveredSkill = skill.name"
@@ -854,13 +753,10 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+      </div>
 
-      <div id="journey" :class="{
-      'content-section min-h-screen bg-black text-white p-4 lg:p-8 flex flex-col items-center justify-center transition-all duration-1000 ease-out': true,
-      'opacity-100 translate-y-0': visibleSections.journey,
-      'opacity-0 translate-y-10': !visibleSections.journey,
-      'no-reveal-transition': instantReveal
-      }">
+      <div id="journey" class="slide">
+      <div class="content-section min-h-full bg-black text-white px-4 pt-32 pb-12 lg:px-8 flex flex-col items-center">
         <!-- Data Visualization Background Elements -->
         <svg class="data-viz-background" viewBox="0 0 400 300">
           <!-- Animated bar chart -->
@@ -934,13 +830,10 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+      </div>
 
-      <div id="blog" :class="{
-      'content-section min-h-screen bg-white p-4 lg:p-8 flex flex-col items-center justify-center transition-all duration-1000 ease-out': true,
-      'opacity-100 translate-y-0': visibleSections.blog,
-      'opacity-0 translate-y-10': !visibleSections.blog,
-      'no-reveal-transition': instantReveal
-      }">
+      <div id="blog" class="slide">
+      <div class="content-section min-h-full bg-white px-4 pt-32 pb-12 lg:px-8 flex flex-col items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
 
@@ -967,6 +860,9 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+      </div>
+      </div>
+      <!-- /.slider-track -->
 
       <!-- Blog Reader Modal -->
       <div v-if="showBlogReader && activeBlogPost" class="fixed inset-0 z-50 flex items-center justify-center">
@@ -1038,9 +934,10 @@ onUnmounted(() => {
 /* FONT AND GLOBAL STYLES */
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
 
-html {
-  scroll-behavior: smooth;
-  scroll-padding-top: 7rem;
+html,
+body {
+  overflow: hidden;
+  height: 100%;
 }
 
 body {
@@ -2234,57 +2131,32 @@ body {
   }
 }
 
-/* Applied briefly while jumping to a section via Next/Previous, so its
-   fade/slide-up reveal snaps into place instantly instead of animating
-   in over its own 1s transition after the curtain opens. */
-.no-reveal-transition {
-  transition: none !important;
+/* Horizontal slider: Next/Previous/dots/nav-links all just change
+   currentSectionIndex, which drives this transform - the slide itself
+   *is* the transition, no overlay trick needed. */
+.slider-viewport {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
-/* Strip-wipe transition overlay for Next/Previous navigation: the screen
-   is divided into horizontal strips that converge from alternating sides
-   (odd strips from the left, even from the right), hold fully closed for
-   a moment, then part back open the same way - like a bank of blinds. */
-.section-transition-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
+.slider-track {
   display: flex;
-  flex-direction: column;
-  pointer-events: none;
+  height: 100%;
+  transition: transform 0.6s cubic-bezier(0.65, 0, 0.35, 1);
+  will-change: transform;
 }
 
-.transition-strip {
-  flex: 1;
-  transform: scaleX(0);
-  background: linear-gradient(135deg, #050505 0%, #1a1a2e 55%, #050505 100%);
-}
-
-.transition-strip:nth-child(odd) {
-  transform-origin: left;
-}
-
-.transition-strip:nth-child(even) {
-  transform-origin: right;
-}
-
-.section-transition-overlay.active .transition-strip {
-  animation: strip-wipe 0.9s cubic-bezier(0.76, 0, 0.24, 1) both;
-}
-
-@keyframes strip-wipe {
-  0% {
-    transform: scaleX(0);
-  }
-  40% {
-    transform: scaleX(1);
-  }
-  60% {
-    transform: scaleX(1);
-  }
-  100% {
-    transform: scaleX(0);
-  }
+.slide {
+  position: relative;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Nav link active state */
