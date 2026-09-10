@@ -204,8 +204,7 @@ onMounted(() => {
   // Keyboard navigation for next/previous section
   document.addEventListener('keydown', handleKeydownNav);
 
-  // Start code typing animation
-  setTimeout(() => typeCode(), 2000);
+  window.addEventListener('resize', updateViewportWidth);
 });
 
 // The rest of your component logic remains unchanged
@@ -291,10 +290,21 @@ const skills = computed(() => {
   });
 });
 
+// Tracks viewport width so the skill-circle radius below can shrink on
+// narrow screens - it's used in an inline transform, not CSS, so a plain
+// media query can't reach it.
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280);
+const updateViewportWidth = () => {
+  viewportWidth.value = window.innerWidth;
+};
+
 // Function to calculate circular position for skill icons
 const getSkillPosition = (index, total) => {
   const angle = (index / total) * 2 * Math.PI - Math.PI / 2;
-  const radius = 220; // Increased from 160 for fuller display
+  // Fixed radius overflowed narrow viewports - the mobile CSS already
+  // shrinks the container and icons, but this radius is applied via
+  // inline transform, so it needs its own breakpoint here.
+  const radius = viewportWidth.value < 640 ? 130 : 220;
   const x = Math.cos(angle) * radius;
   const y = Math.sin(angle) * radius;
   return {
@@ -333,54 +343,6 @@ const educationData = ref([
     description: 'Foundation years building strong analytical and problem-solving skills.'
   }
 ]);
-
-// Code snippets for showcase
-const codeSnippets = [
-  `# Neural Network Training
-model = Sequential([
-  Dense(128, activation='relu'),
-  Dropout(0.2),
-  Dense(10, activation='softmax')
-])
-model.compile(optimizer='adam',
-              loss='categorical_crossentropy')`,
-  `# Data Analysis Pipeline
-df = pd.read_csv('data.csv')
-X = df.drop('target', axis=1)
-y = df['target']
-X_train, X_test = train_test_split(X, y)
-model.fit(X_train, y_train)`,
-  `# Deep Learning with PyTorch
-class NeuralNet(nn.Module):
-  def __init__(self):
-    super().__init__()
-    self.fc1 = nn.Linear(784, 256)
-    self.fc2 = nn.Linear(256, 10)
-  def forward(self, x):
-    return F.softmax(self.fc2(F.relu(self.fc1(x))))`
-];
-const currentSnippetIndex = ref(0);
-const displayedCode = ref('');
-const isTyping = ref(false);
-
-const typeCode = async () => {
-  if (isTyping.value) return;
-  isTyping.value = true;
-  
-  const snippet = codeSnippets[currentSnippetIndex.value];
-  displayedCode.value = '';
-  
-  for (let i = 0; i < snippet.length; i++) {
-    displayedCode.value += snippet[i];
-    await new Promise(resolve => setTimeout(resolve, 20));
-  }
-  
-  await new Promise(resolve => setTimeout(resolve, 3000));
-  currentSnippetIndex.value = (currentSnippetIndex.value + 1) % codeSnippets.length;
-  isTyping.value = false;
-  typeCode();
-};
-
 
 // Blog data
 const blogPosts = ref([
@@ -523,6 +485,7 @@ onUnmounted(() => {
   document.removeEventListener('keydown', enterSite);
   document.removeEventListener('mousedown', handleClickOutside);
   document.removeEventListener('keydown', handleKeydownNav);
+  window.removeEventListener('resize', updateViewportWidth);
 });
 </script>
 
@@ -656,7 +619,7 @@ onUnmounted(() => {
     <main class="slider-viewport">
       <div class="slider-track" :style="{ transform: `translateX(-${currentSectionIndex * 100}%)` }">
       <div id="home" class="slide">
-      <div class="content-section min-h-full px-4 pt-32 pb-12 lg:px-8 flex flex-col lg:flex-row lg:items-center">
+      <div class="content-section w-full px-4 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
 
@@ -671,13 +634,13 @@ onUnmounted(() => {
         </div>
 
         <div class="w-full text-center lg:text-left lg:w-1/2 lg:p-4 relative z-10">
-          <h1 class="text-5xl sm:text-6xl lg:text-8xl font-bold mb-4 leading-tight">
-            <p> Soham </p> Kulkarni
+          <h1 class="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 leading-tight whitespace-nowrap">
+            Soham Kulkarni
           </h1>
           <div class="subhead text-lg">
-            <p>A final-year Data Science student at IIT Madras</p>
-            <p>specializing in building intelligent systems,</p>
-            <p>with a firm grounding in mathematics</p>
+            <p>A final-year Data Science student at IIT Madras, currently working as an ML Engineer Intern at Helloramp.ai.</p>
+            <p>I build intelligent systems end-to-end — from feature engineering and model design to shipping and monitoring them in production.</p>
+            <p>With a firm grounding in mathematics and a habit of turning ambiguous problems into clean, reliable solutions, I care as much about the details as I do about the bigger picture.</p>
           </div>
         </div>
         <div class="w-full lg:w-1/2 p-4 flex justify-center items-center relative z-10">
@@ -698,21 +661,8 @@ onUnmounted(() => {
       </div>
       </div>
 
-      <div id="projects" class="slide">
-      <div class="content-section min-h-full bg-black text-white px-4 pt-32 pb-12 lg:px-8 flex flex-col lg:flex-row lg:items-center">
-        <!-- Code Snippet Showcase -->
-        <div class="code-window">
-          <div class="code-window-header">
-            <div class="code-dots">
-              <span class="dot red"></span>
-              <span class="dot yellow"></span>
-              <span class="dot green"></span>
-            </div>
-            <span class="code-title">ml_model.py</span>
-          </div>
-          <pre class="code-content"><code>{{ displayedCode }}</code></pre>
-        </div>
-
+      <div id="projects" class="slide bg-black text-white">
+      <div class="content-section w-full px-4 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
           <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Projects</h1>
           <p>This selection of projects demonstrates</p>
@@ -727,8 +677,8 @@ onUnmounted(() => {
       </div>
       </div>
 
-      <div id="skills" class="slide">
-      <div class="content-section min-h-full bg-white px-4 pt-32 pb-12 lg:px-8 flex flex-col lg:flex-row lg:items-center">
+      <div id="skills" class="slide bg-white">
+      <div class="content-section w-full px-4 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
 
@@ -755,8 +705,8 @@ onUnmounted(() => {
       </div>
       </div>
 
-      <div id="journey" class="slide">
-      <div class="content-section min-h-full bg-black text-white px-4 pt-32 pb-12 lg:px-8 flex flex-col items-center">
+      <div id="journey" class="slide bg-black text-white">
+      <div class="content-section w-full px-4 lg:px-8 flex flex-col items-center">
         <!-- Data Visualization Background Elements -->
         <svg class="data-viz-background" viewBox="0 0 400 300">
           <!-- Animated bar chart -->
@@ -832,8 +782,8 @@ onUnmounted(() => {
       </div>
       </div>
 
-      <div id="blog" class="slide">
-      <div class="content-section min-h-full bg-white px-4 pt-32 pb-12 lg:px-8 flex flex-col items-center">
+      <div id="blog" class="slide bg-white">
+      <div class="content-section w-full px-4 lg:px-8 flex flex-col items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
 
@@ -1008,132 +958,13 @@ body {
   }
 }
 
-/* Home Hero: status badge, quick stats, CTAs */
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: #fff;
-  border: 2px solid #000;
-  border-radius: 9999px;
-  padding: 6px 16px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin-bottom: 20px;
-  box-shadow: 3px 3px 0px 0px rgba(0, 0, 0, 1);
+.subhead p {
+  margin-bottom: 14px;
+  max-width: 40rem;
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.8);
-  animation: status-pulse 2s ease-in-out infinite;
-  flex-shrink: 0;
-}
-
-@keyframes status-pulse {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.5;
-    transform: scale(0.75);
-  }
-}
-
-.hero-stats {
-  display: flex;
-  gap: 32px;
-  margin-top: 28px;
-  justify-content: center;
-}
-
-.hero-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.hero-stat-num {
-  font-size: 2rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.hero-stat-label {
-  font-size: 0.75rem;
-  color: #6b7280;
-  margin-top: 4px;
-  text-align: center;
-}
-
-.hero-cta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 28px;
-  justify-content: center;
-}
-
-.hero-cta-primary,
-.hero-cta-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  font-size: 0.95rem;
-  padding: 12px 22px;
-  border-radius: 8px;
-  border: 2px solid #000;
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.hero-cta-primary {
-  background: #000;
-  color: #fff;
-  box-shadow: 4px 4px 0px 0px rgba(102, 126, 234, 0.6);
-}
-
-.hero-cta-primary:hover {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0px 0px rgba(102, 126, 234, 0.6);
-}
-
-.hero-cta-secondary {
-  background: #fff;
-  color: #000;
-  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
-}
-
-.hero-cta-secondary:hover {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 1);
-}
-
-@media (max-width: 640px) {
-  .hero-stats {
-    gap: 20px;
-  }
-
-  .hero-stat-num {
-    font-size: 1.5rem;
-  }
-
-  .hero-cta {
-    flex-direction: column;
-    align-items: stretch;
-  }
-}
-
-@media (min-width: 1024px) {
-  .hero-stats,
-  .hero-cta {
-    justify-content: flex-start;
-  }
+.subhead p:last-child {
+  margin-bottom: 0;
 }
 
 /* Interactive Reveal Effect */
@@ -1260,8 +1091,8 @@ body {
 /* Larger skills container for fuller display */
 .skills-circle-container-large {
   position: relative;
-  width: 700px;
-  height: 700px;
+  width: 580px;
+  height: 580px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1971,84 +1802,6 @@ body {
   color: rgba(255, 255, 255, 0.9) !important;
 }
 
-/* Code Window Showcase */
-.code-window {
-  position: absolute;
-  top: 10%;
-  right: 5%;
-  width: 400px;
-  max-width: 42%;
-  background: #1e1e1e;
-  border: 2px solid #000;
-  border-radius: 8px;
-  box-shadow: 8px 8px 0px 0px rgba(0, 0, 0, 1);
-  z-index: 5;
-  opacity: 0.85;
-  transition: opacity 0.3s, transform 0.3s;
-}
-
-.code-window:hover {
-  opacity: 1;
-  transform: translateY(-4px);
-}
-
-.code-window-header {
-  background: #2d2d2d;
-  padding: 12px 16px;
-  border-bottom: 1px solid #000;
-  border-radius: 6px 6px 0 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.code-dots {
-  display: flex;
-  gap: 8px;
-}
-
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 1px solid #000;
-}
-
-.dot.red {
-  background: #ff5f56;
-}
-
-.dot.yellow {
-  background: #ffbd2e;
-}
-
-.dot.green {
-  background: #27c93f;
-}
-
-.code-title {
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
-  font-family: 'Courier New', monospace;
-}
-
-.code-content {
-  padding: 20px;
-  margin: 0;
-  color: #d4d4d4;
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  min-height: 200px;
-  max-height: 300px;
-  overflow: hidden;
-}
-
-.code-content code {
-  color: #9cdcfe;
-}
-
 /* Neural Network Visualization */
 .neural-network {
   position: absolute;
@@ -2154,9 +1907,41 @@ body {
   flex: 0 0 100%;
   width: 100%;
   height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Reserve space for the fixed navbar (top) and floating Next/Prev bar
+     (bottom) so content is centered exactly between them - see the
+     desktop override below, where the floating bar sits lower and
+     needs less clearance. Below lg, two-column sections stack their
+     columns instead of sitting side by side, so content can run taller
+     than the viewport; allow that one axis to scroll there rather than
+     force everything to shrink to fit. Desktop has no such case (every
+     section was checked to fit within its clearance) so stays fully
+     non-scrolling. */
   overflow-y: auto;
   overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
+  padding-top: 7.5rem;
+  padding-bottom: 9rem;
+}
+
+@media (max-width: 1023px) {
+  .slide {
+    /* Plain block flow instead of flex-centering below lg: centering an
+       overflowing flex child can leave its top edge unreachable by
+       scroll in some browsers, whereas block flow with padding-top for
+       navbar clearance scrolls normally either way. */
+    display: block;
+  }
+}
+
+@media (min-width: 1024px) {
+  .slide {
+    overflow: hidden;
+    padding-top: 7rem;
+    padding-bottom: 6rem;
+  }
 }
 
 /* Nav link active state */
