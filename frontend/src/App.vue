@@ -32,14 +32,14 @@ let messageTimeoutId = null; // To hold the ID of our 4-second timeout
 // keep in sync with it.
 const currentSectionIndex = ref(0);
 const isTransitioning = ref(false);
-let clickAudio = null;
 // Must match .slider-track's CSS transition-duration.
 const SLIDE_TRANSITION_MS = 600;
 let slideTransitionTimeoutId = null;
 
-// Audio: a continuously looping background track (the uploaded song) plus
-// a short, distinct click sound (the original tabla percussion clip) -
-// two separate audio elements, both gated by the one mute toggle.
+// Audio: a continuously looping background track (the uploaded song), plus
+// a short click sound synthesized with the Web Audio API (the same
+// audioContext used for the welcome chime) rather than an audio file -
+// gives a crisp, actual "click" instead of a music clip standing in for one.
 let bgmAudio = null;
 const BGM_VOLUME = 0.14;
 
@@ -58,14 +58,22 @@ const startBgm = () => {
 };
 
 const playClickSound = () => {
-  if (isMuted.value) return;
+  if (isMuted.value || !audioContext) return;
   try {
-    if (!clickAudio) {
-      clickAudio = new Audio('/assets/audio/soft-tabla.mp3');
-      clickAudio.volume = 0.5;
-    }
-    clickAudio.currentTime = 0;
-    clickAudio.play().catch(() => {});
+    if (audioContext.state === 'suspended') audioContext.resume();
+    const now = audioContext.currentTime;
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(950, now);
+    oscillator.frequency.exponentialRampToValueAtTime(240, now + 0.05);
+    gainNode.gain.setValueAtTime(0.0001, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.3, now + 0.005);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+    oscillator.start(now);
+    oscillator.stop(now + 0.08);
   } catch (e) {
     console.error('Could not play click sound.', e);
   }
@@ -89,7 +97,6 @@ const toggleMute = () => {
   }
   if (isMuted.value) {
     if (bgmAudio) bgmAudio.pause();
-    if (clickAudio) clickAudio.pause();
   } else {
     startBgm();
     playClickSound(); // confirmation click
@@ -150,6 +157,10 @@ const enterSite = () => {
 
   // Switch from the welcome screen to the main content
   isLoading.value = false;
+
+  // The navbar/bottom-nav are only actually rendered (not display:none)
+  // once isLoading flips, so measure clearances after that DOM update.
+  nextTick(() => updateSlideClearances());
 
   // Clean up the event listeners now that they've served their purpose
   document.removeEventListener('mousedown', enterSite);
@@ -296,6 +307,25 @@ const skills = computed(() => {
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280);
 const updateViewportWidth = () => {
   viewportWidth.value = window.innerWidth;
+  updateSlideClearances();
+};
+
+// Each .slide reserves top/bottom padding to clear the fixed navbar and
+// the floating Next/Previous bar, so section content can be centered
+// between them with no scroll. Rather than guessing those two heights as
+// fixed rem values (which drift out of sync with the real elements and
+// either clip content or waste space), measure the actual rendered boxes
+// and expose them as CSS custom properties the .slide padding reads.
+const navbarWrapperEl = ref(null);
+const bottomNavWrapperEl = ref(null);
+
+const updateSlideClearances = () => {
+  if (!navbarWrapperEl.value || !bottomNavWrapperEl.value) return;
+  const navBottom = navbarWrapperEl.value.getBoundingClientRect().bottom;
+  const bottomNavHeight = window.innerHeight - bottomNavWrapperEl.value.getBoundingClientRect().top;
+  // A little breathing room past each element's own edge.
+  document.documentElement.style.setProperty('--nav-clearance', `${Math.ceil(navBottom) + 24}px`);
+  document.documentElement.style.setProperty('--bottom-clearance', `${Math.ceil(bottomNavHeight) + 24}px`);
 };
 
 // Function to calculate circular position for skill icons
@@ -506,7 +536,7 @@ onUnmounted(() => {
 
   <div v-show="!isLoading" class="main-content">
 
-    <div class="fixed top-4 left-4 right-4 md:top-6 md:left-6 md:right-6 z-50">
+    <div ref="navbarWrapperEl" class="fixed top-4 left-4 right-4 md:top-6 md:left-6 md:right-6 z-50">
       <div
         class="navbar p-4 rounded-2xl bg-white/90 backdrop-blur-lg shadow-md flex items-center justify-center lg:justify-between border-2 border-black border-solid">
         <div class="text-2xl font-bold">SK</div>
@@ -537,7 +567,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Floating Next / Previous section navigation -->
-    <div class="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 sm:gap-3">
+    <div ref="bottomNavWrapperEl" class="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 sm:gap-3">
       <button @click="toggleMute" :aria-label="isMuted ? 'Unmute click sound' : 'Mute click sound'"
         class="section-nav-arrow mute-toggle">
         <i :class="isMuted ? 'ri-volume-mute-line' : 'ri-volume-up-line'"></i>
@@ -634,10 +664,10 @@ onUnmounted(() => {
         </div>
 
         <div class="w-full text-center lg:text-left lg:w-1/2 lg:p-4 relative z-10">
-          <h1 class="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 leading-tight whitespace-nowrap">
+          <h1 class="text-4xl sm:text-5xl lg:text-7xl font-bold mb-6 leading-tight whitespace-nowrap">
             Soham Kulkarni
           </h1>
-          <div class="subhead text-lg">
+          <div class="subhead text-xl">
             <p>A final-year Data Science student at IIT Madras, currently working as an ML Engineer Intern at Helloramp.ai.</p>
             <p>I build intelligent systems end-to-end — from feature engineering and model design to shipping and monitoring them in production.</p>
             <p>With a firm grounding in mathematics and a habit of turning ambiguous problems into clean, reliable solutions, I care as much about the details as I do about the bigger picture.</p>
@@ -664,10 +694,12 @@ onUnmounted(() => {
       <div id="projects" class="slide bg-black text-white">
       <div class="content-section w-full px-4 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
-          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Projects</h1>
-          <p>This selection of projects demonstrates</p>
-          <p>my process of deconstructing a problem</p>
-          and building a robust, end-to-end solution.
+          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 leading-tight">Projects</h1>
+          <div class="subhead text-xl">
+            <p>This selection demonstrates my process of deconstructing a real-world problem and building a robust, end-to-end solution around it — not just a model in a notebook.</p>
+            <p>Each one pairs a practical need with the tools suited to it: gradient boosting for churn prediction, an LLM-backed guide for personalized learning, and a task queue for a library system under real concurrency.</p>
+            <p>Browse the cards to see the problem, the stack, and the reasoning behind each choice.</p>
+          </div>
         </div>
         <div class="w-full lg:w-1/2 p-4 relative z-10">
           <div class="flex items-center justify-center">
@@ -683,10 +715,13 @@ onUnmounted(() => {
         <div class="grid-background"></div>
 
         <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
-          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Skills</h1>
-          <p class="text-xl">A comprehensive toolkit of technologies</p>
-          <p class="text-xl">and frameworks that power my projects.</p>
-          <p class="text-xl mt-4">Hover to explore each skill.</p>
+          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 leading-tight">Skills</h1>
+          <div class="subhead text-xl">
+            <p>Python is home base — TensorFlow, PyTorch, and scikit-learn for modeling, Pandas and NumPy for everything that happens before a model ever sees the data.</p>
+            <p>Apache Spark and PostgreSQL handle the scale that a laptop can't, while Docker and Kubernetes carry a project from a notebook to something that actually runs in production.</p>
+            <p>Git, Linux, and Google Cloud round out the workflow underneath all of it.</p>
+          </div>
+          <p class="text-lg mt-6 opacity-70">Hover a bubble to see what it is.</p>
         </div>
         <div class="w-full lg:w-1/2 p-4 flex justify-center items-center relative z-10">
           <div class="skills-circle-container-large">
@@ -970,8 +1005,8 @@ body {
 /* Interactive Reveal Effect */
 .reveal-container {
   position: relative;
-  width: 400px;
-  height: 400px;
+  width: 460px;
+  height: 460px;
   border-radius: 50%;
   overflow: hidden;
   cursor: pointer;
@@ -1911,19 +1946,22 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Reserve space for the fixed navbar (top) and floating Next/Prev bar
-     (bottom) so content is centered exactly between them - see the
-     desktop override below, where the floating bar sits lower and
-     needs less clearance. Below lg, two-column sections stack their
-     columns instead of sitting side by side, so content can run taller
-     than the viewport; allow that one axis to scroll there rather than
-     force everything to shrink to fit. Desktop has no such case (every
-     section was checked to fit within its clearance) so stays fully
-     non-scrolling. */
+  /* Reserve exactly enough space to clear the fixed navbar (top) and the
+     floating Next/Prev bar (bottom), so content centers between them
+     with no scroll. --nav-clearance/--bottom-clearance are measured from
+     the real elements at runtime (see updateSlideClearances) rather than
+     guessed, so this never over-reserves (wasted empty space) or
+     under-reserves (clipped headings) - the fallback values only apply
+     for the first frame before that JS runs. Below lg, two-column
+     sections stack their columns instead of sitting side by side, so
+     content can still run taller than the viewport; allow that one axis
+     to scroll there rather than shrink everything to force a fit.
+     Desktop has no such case (every section fits its clearance) so
+     stays fully non-scrolling. */
   overflow-y: auto;
   overflow-x: hidden;
-  padding-top: 7.5rem;
-  padding-bottom: 9rem;
+  padding-top: var(--nav-clearance, 7.5rem);
+  padding-bottom: var(--bottom-clearance, 9rem);
 }
 
 @media (max-width: 1023px) {
@@ -1939,8 +1977,6 @@ body {
 @media (min-width: 1024px) {
   .slide {
     overflow: hidden;
-    padding-top: 7rem;
-    padding-bottom: 6rem;
   }
 }
 
