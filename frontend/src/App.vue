@@ -19,6 +19,65 @@ const sectionIds = ['home', 'projects', 'skills', 'journey'];
 let audioContext = null;
 let messageTimeoutId = null; // To hold the ID of our 4-second timeout
 
+// Next/Previous section navigation
+const currentSectionIndex = ref(0);
+const isTransitioning = ref(false);
+let clickAudio = null;
+let transitionScrollTimeoutId = null;
+
+const playClickSound = () => {
+  try {
+    if (!clickAudio) {
+      clickAudio = new Audio('/assets/audio/click-sound.mp3');
+      clickAudio.volume = 0.45;
+    }
+    clickAudio.currentTime = 0;
+    clickAudio.play().catch(() => {});
+  } catch (e) {
+    console.error('Could not play click sound.', e);
+  }
+};
+
+const goToSection = (index) => {
+  if (isTransitioning.value) return;
+  const total = sectionIds.length;
+  const newIndex = ((index % total) + total) % total;
+  if (newIndex === currentSectionIndex.value) return;
+
+  playClickSound();
+  isTransitioning.value = true;
+
+  // Jump to the new section once the curtain has fully covered the screen
+  transitionScrollTimeoutId = setTimeout(() => {
+    const el = document.getElementById(sectionIds[newIndex]);
+    if (el) {
+      el.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+    currentSectionIndex.value = newIndex;
+  }, 350);
+};
+
+const onTransitionOverlayAnimationEnd = () => {
+  isTransitioning.value = false;
+};
+
+const nextSection = () => goToSection(currentSectionIndex.value + 1);
+const prevSection = () => goToSection(currentSectionIndex.value - 1);
+
+const handleKeydownNav = (e) => {
+  if (isLoading.value || showRAGModal.value) return;
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown') {
+    e.preventDefault();
+    nextSection();
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') {
+    e.preventDefault();
+    prevSection();
+  }
+};
+
 /**
  * This function handles the user's entry into the site.
  * It's triggered by the first click or keydown.
@@ -94,8 +153,12 @@ onMounted(() => {
     (entries) => {
       entries.forEach((entry) => {
         visibleSections.value[entry.target.id] = entry.isIntersecting;
+        if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+          const idx = sectionIds.indexOf(entry.target.id);
+          if (idx !== -1) currentSectionIndex.value = idx;
+        }
       });
-    }, { threshold: 0.1 }
+    }, { threshold: [0.1, 0.5] }
   );
 
   sectionIds.forEach(id => {
@@ -104,7 +167,10 @@ onMounted(() => {
       observer.observe(element);
     }
   });
-  
+
+  // Keyboard navigation for next/previous section
+  document.addEventListener('keydown', handleKeydownNav);
+
   // Start code typing animation
   setTimeout(() => typeCode(), 2000);
 });
@@ -285,9 +351,11 @@ const typeCode = async () => {
 
 onUnmounted(() => {
   clearTimeout(messageTimeoutId); // Clean up the timer
+  clearTimeout(transitionScrollTimeoutId);
   document.removeEventListener('mousedown', enterSite);
   document.removeEventListener('keydown', enterSite);
   document.removeEventListener('mousedown', handleClickOutside);
+  document.removeEventListener('keydown', handleKeydownNav);
   if (observer) {
     observer.disconnect();
   }
@@ -317,24 +385,47 @@ onUnmounted(() => {
         <div class="text-2xl font-bold">SK</div>
 
         <div class="hidden lg:flex items-center space-x-2 sm:space-x-4">
-          <a href="#home"
-            class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          <a href="#home" @click.prevent="goToSection(0)" :class="{ 'nav-link-active': currentSectionIndex === 0 }"
+            class="nav-link w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
             Home
           </a>
-          <a href="#projects"
-            class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          <a href="#projects" @click.prevent="goToSection(1)" :class="{ 'nav-link-active': currentSectionIndex === 1 }"
+            class="nav-link w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
             Projects
           </a>
-          <a href="#skills"
-            class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          <a href="#skills" @click.prevent="goToSection(2)" :class="{ 'nav-link-active': currentSectionIndex === 2 }"
+            class="nav-link w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
             Skills
           </a>
-          <a href="#journey"
-            class="w-28 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          <a href="#journey" @click.prevent="goToSection(3)" :class="{ 'nav-link-active': currentSectionIndex === 3 }"
+            class="nav-link w-28 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
             Journey
           </a>
         </div>
       </div>
+    </div>
+
+    <!-- Curtain-wipe transition overlay, shown while jumping between sections -->
+    <div class="section-transition-overlay" :class="{ active: isTransitioning }"
+      @animationend="onTransitionOverlayAnimationEnd"></div>
+
+    <!-- Floating Next / Previous section navigation -->
+    <div class="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 sm:gap-3">
+      <button @click="prevSection" :disabled="isTransitioning" aria-label="Previous section"
+        class="section-nav-arrow">
+        <i class="ri-arrow-left-line"></i>
+      </button>
+
+      <div class="section-dots">
+        <button v-for="(id, idx) in sectionIds" :key="id" @click="goToSection(idx)"
+          :class="['section-dot', { active: currentSectionIndex === idx }]" :aria-label="`Go to ${id}`"></button>
+      </div>
+
+      <button @click="nextSection" :disabled="isTransitioning" aria-label="Next section"
+        class="section-nav-arrow section-nav-arrow-next">
+        <span class="hidden sm:inline">Next</span>
+        <i class="ri-arrow-right-line"></i>
+      </button>
     </div>
 
     <div v-if="isSocialMenuOpen"
@@ -1296,6 +1387,133 @@ body {
 @keyframes fade-in-point {
   to {
     opacity: 1;
+  }
+}
+
+/* Curtain-wipe transition overlay for Next/Previous navigation */
+.section-transition-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: linear-gradient(135deg, #050505 0%, #1a1a2e 45%, #050505 100%);
+  transform: translateY(-100%);
+  pointer-events: none;
+}
+
+.section-transition-overlay.active {
+  animation: curtain-wipe 0.7s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+@keyframes curtain-wipe {
+  0% {
+    transform: translateY(-100%);
+  }
+  50% {
+    transform: translateY(0%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+/* Nav link active state */
+.nav-link {
+  position: relative;
+}
+
+.nav-link-active {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+/* Floating Next / Previous section controls */
+.section-nav-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 48px;
+  min-width: 48px;
+  padding: 0 14px;
+  background: #ffffff;
+  border: 2px solid #000;
+  border-radius: 9999px;
+  color: #000;
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.section-nav-arrow i {
+  font-size: 1.25rem;
+}
+
+.section-nav-arrow:hover:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+}
+
+.section-nav-arrow-next {
+  background: #000;
+  color: #fff;
+  box-shadow: 4px 4px 0px 0px rgba(102, 126, 234, 0.6);
+}
+
+.section-nav-arrow-next:hover:not(:disabled) {
+  box-shadow: 2px 2px 0px 0px rgba(102, 126, 234, 0.6);
+}
+
+.section-nav-arrow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.section-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  border: 2px solid #000;
+  border-radius: 9999px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+}
+
+.section-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid #000;
+  background: #fff;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.section-dot:hover {
+  transform: scale(1.3);
+}
+
+.section-dot.active {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  width: 22px;
+  border-radius: 9999px;
+}
+
+@media (max-width: 640px) {
+  .section-nav-arrow {
+    height: 42px;
+    min-width: 42px;
+    padding: 0 10px;
+  }
+
+  .section-dots {
+    padding: 8px 10px;
+    gap: 6px;
   }
 }
 
