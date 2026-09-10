@@ -16,6 +16,15 @@ const visibleSections = ref({});
 let observer = null;
 const sectionIds = ['home', 'projects', 'skills', 'journey', 'blog'];
 
+// Static scatter for the Home section's ambient floating particles -
+// generated once, not reactive (they never need to change).
+const homeParticles = Array.from({ length: 14 }, () => ({
+  left: Math.random() * 100,
+  bottom: Math.random() * 70,
+  delay: Math.random() * 10,
+  duration: 10 + Math.random() * 6
+}));
+
 let audioContext = null;
 let messageTimeoutId = null; // To hold the ID of our 4-second timeout
 
@@ -25,6 +34,15 @@ const isTransitioning = ref(false);
 const instantReveal = ref(false);
 let clickAudio = null;
 let transitionScrollTimeoutId = null;
+let overlayResetTimeoutId = null;
+// Must track the strip-wipe CSS animation (see .transition-strip/@keyframes
+// strip-wipe): 7 strips, each staggered 0.05s later than the last, each
+// running the full 0.9s animation - so the last strip finishes at
+// (7-1)*0.05s + 0.9s = 1.2s.
+const STRIP_COUNT = 7;
+const STRIP_STAGGER_MS = 50;
+const STRIP_ANIMATION_MS = 900;
+const STRIP_TOTAL_DURATION_MS = (STRIP_COUNT - 1) * STRIP_STAGGER_MS + STRIP_ANIMATION_MS;
 
 // Mute toggle for the navigation click sound, remembered across visits
 const isMuted = ref(false);
@@ -41,19 +59,39 @@ const toggleMute = () => {
   } catch (e) {
     // ignore persistence failures
   }
-  // Only plays if we just unmuted - confirms sound is back on.
-  playClickSound();
+  if (isMuted.value) {
+    // Muting only gated *future* playClickSound() calls - it never
+    // stopped a sound already in progress, so muting mid-playback looked
+    // broken (the sound kept going for up to CLICK_SOUND_DURATION_MS).
+    // Silence it immediately instead.
+    clearTimeout(clickAudioStopTimeoutId);
+    if (clickAudio) clickAudio.pause();
+  } else {
+    // Confirmation click that sound is back on.
+    playClickSound();
+  }
 };
+
+let clickAudioStopTimeoutId = null;
+const CLICK_SOUND_DURATION_MS = 2200; // plays as a short accent, not the full track
 
 const playClickSound = () => {
   if (isMuted.value) return;
   try {
     if (!clickAudio) {
       clickAudio = new Audio('/assets/audio/click-sound.mp3');
-      clickAudio.volume = 0.18;
+      clickAudio.volume = 0.35;
     }
+    clearTimeout(clickAudioStopTimeoutId);
     clickAudio.currentTime = 0;
     clickAudio.play().catch(() => {});
+    // Cap playback so a click always reads as a quick accent - without this
+    // the full ~70s track would keep playing quietly in the background
+    // (and restart from 0 on every click), which reads as "no sound" when
+    // a click lands during a long stretch instead of near the hook.
+    clickAudioStopTimeoutId = setTimeout(() => {
+      clickAudio.pause();
+    }, CLICK_SOUND_DURATION_MS);
   } catch (e) {
     console.error('Could not play click sound.', e);
   }
@@ -98,11 +136,15 @@ const goToSection = (index) => {
       });
     }
     currentSectionIndex.value = newIndex;
-  }, 350);
-};
+    // 700ms: the point at which every strip (including the last, most
+    // delayed one - see STRIP_MAX_DELAY_MS below) has converged and is
+    // holding fully closed, per the strip-wipe keyframes' 40%-60% hold.
+  }, 700);
 
-const onTransitionOverlayAnimationEnd = () => {
-  isTransitioning.value = false;
+  clearTimeout(overlayResetTimeoutId);
+  overlayResetTimeoutId = setTimeout(() => {
+    isTransitioning.value = false;
+  }, STRIP_TOTAL_DURATION_MS);
 };
 
 const nextSection = () => goToSection(currentSectionIndex.value + 1);
@@ -529,6 +571,8 @@ const readPrevPost = () => {
 onUnmounted(() => {
   clearTimeout(messageTimeoutId); // Clean up the timer
   clearTimeout(transitionScrollTimeoutId);
+  clearTimeout(clickAudioStopTimeoutId);
+  clearTimeout(overlayResetTimeoutId);
   document.removeEventListener('mousedown', enterSite);
   document.removeEventListener('keydown', enterSite);
   document.removeEventListener('mousedown', handleClickOutside);
@@ -586,9 +630,12 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Curtain-wipe transition overlay, shown while jumping between sections -->
-    <div class="section-transition-overlay" :class="{ active: isTransitioning }"
-      @animationend="onTransitionOverlayAnimationEnd"></div>
+    <!-- Strip-wipe transition overlay, shown while jumping between sections:
+         alternating horizontal strips converge from left/right to cover the
+         screen, hold, then part again to reveal the new section. -->
+    <div class="section-transition-overlay" :class="{ active: isTransitioning }">
+      <span v-for="n in STRIP_COUNT" :key="n" class="transition-strip" :style="{ animationDelay: (n - 1) * STRIP_STAGGER_MS + 'ms' }"></span>
+    </div>
 
     <!-- Floating Next / Previous section navigation -->
     <div class="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 sm:gap-3">
@@ -679,8 +726,22 @@ onUnmounted(() => {
       }">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
-        
+
+        <!-- Floating Particles -->
+        <div class="particles-container particles-light">
+          <span v-for="(p, i) in homeParticles" :key="i" class="particle" :style="{
+            left: p.left + '%',
+            bottom: p.bottom + '%',
+            animationDelay: p.delay + 's',
+            animationDuration: p.duration + 's'
+          }"></span>
+        </div>
+
         <div class="w-full text-center lg:text-left lg:w-1/2 lg:p-4 relative z-10">
+          <span class="status-badge">
+            <span class="status-dot"></span>
+            Currently {{ educationData[0].degree }} @ {{ educationData[0].institution }}
+          </span>
           <h1 class="text-5xl sm:text-6xl lg:text-8xl font-bold mb-4 leading-tight">
             <p> Soham </p> Kulkarni
           </h1>
@@ -688,6 +749,30 @@ onUnmounted(() => {
             <p>A final-year Data Science student at IIT Madras</p>
             <p>specializing in building intelligent systems,</p>
             <p>with a firm grounding in mathematics</p>
+          </div>
+
+          <div class="hero-stats">
+            <div class="hero-stat">
+              <span class="hero-stat-num">3</span>
+              <span class="hero-stat-label">Featured Projects</span>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-num">16</span>
+              <span class="hero-stat-label">Tools &amp; Frameworks</span>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-num">5</span>
+              <span class="hero-stat-label">Blog Articles</span>
+            </div>
+          </div>
+
+          <div class="hero-cta">
+            <button @click="goToSection(1)" class="hero-cta-primary">
+              View Projects <i class="ri-arrow-right-line"></i>
+            </button>
+            <button @click="playClickSound(); showRAGModal = true" class="hero-cta-secondary">
+              <i class="ri-chat-ai-line"></i> Ask Me Anything
+            </button>
           </div>
         </div>
         <div class="w-full lg:w-1/2 p-4 flex justify-center items-center relative z-10">
@@ -771,7 +856,7 @@ onUnmounted(() => {
       </div>
 
       <div id="journey" :class="{
-      'content-section min-h-screen bg-black text-white p-4 lg:p-8 flex flex-col lg:flex-row items-center transition-all duration-1000 ease-out': true,
+      'content-section min-h-screen bg-black text-white p-4 lg:p-8 flex flex-col items-center justify-center transition-all duration-1000 ease-out': true,
       'opacity-100 translate-y-0': visibleSections.journey,
       'opacity-0 translate-y-10': !visibleSections.journey,
       'no-reveal-transition': instantReveal
@@ -797,7 +882,7 @@ onUnmounted(() => {
               <animate attributeName="y" from="200" to="50" dur="1s" fill="freeze" begin="0.6s"/>
             </rect>
           </g>
-          
+
           <!-- Animated line graph -->
           <polyline class="line-graph" points="250,180 280,140 310,160 340,100 370,120"
                     stroke-dasharray="200" stroke-dashoffset="200">
@@ -809,17 +894,33 @@ onUnmounted(() => {
           <circle cx="340" cy="100" r="3" class="graph-point" style="animation-delay: 1.5s"/>
           <circle cx="370" cy="120" r="3" class="graph-point" style="animation-delay: 2s"/>
         </svg>
-        
-        <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
-          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Journey</h1>
-          <div class="text-lg">
-            <p>My professional path and</p>
-            <p>academic milestones that</p>
-            <p>define my career.</p>
+
+        <div class="w-full max-w-6xl relative z-10">
+          <div class="text-center mb-8 lg:mb-4">
+            <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Journey</h1>
+            <p class="text-lg">My professional path and academic milestones that define my career.</p>
           </div>
-        </div>
-        <div class="w-full lg:w-1/2 p-4 relative z-10">
-          <div class="timeline-container">
+
+          <!-- Horizontal branching tree (desktop) -->
+          <div class="tree hidden lg:block">
+            <div class="tree-trunk"></div>
+            <div class="tree-nodes">
+              <div v-for="(edu, index) in educationData" :key="edu.id"
+                class="tree-node" :class="index % 2 === 0 ? 'branch-up' : 'branch-down'">
+                <div class="tree-card">
+                  <h3 class="text-base font-bold mb-1">{{ edu.degree }}</h3>
+                  <p class="text-sm font-semibold mb-1">{{ edu.institution }}</p>
+                  <p class="text-xs tree-card-year mb-2">{{ edu.year }}</p>
+                  <p class="text-xs tree-card-desc">{{ edu.description }}</p>
+                </div>
+                <div class="tree-stem"></div>
+                <div class="tree-dot"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Vertical timeline (mobile/tablet) -->
+          <div class="timeline-container lg:hidden">
             <div class="timeline-inner">
               <div class="timeline-item" v-for="edu in educationData" :key="edu.id">
                 <div class="timeline-card">
@@ -843,15 +944,15 @@ onUnmounted(() => {
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
 
-        <div class="w-full max-w-5xl relative z-10">
-          <div class="text-center mb-10 lg:mb-14">
+        <div class="w-full max-w-6xl relative z-10">
+          <div class="text-center mb-8 lg:mb-10">
             <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Blog</h1>
             <p class="text-xl">Notes on data science, machine learning,</p>
             <p class="text-xl">and the occasional production war story.</p>
           </div>
 
-          <div class="blog-grid-container">
-            <div class="blog-grid">
+          <div class="blog-row-wrapper">
+            <div class="blog-row">
               <button v-for="post in blogPosts" :key="post.id" @click="openBlogPost(post)" class="blog-card">
                 <span class="blog-card-tag">{{ post.tag }}</span>
                 <h3 class="blog-card-title">{{ post.title }}</h3>
@@ -862,6 +963,7 @@ onUnmounted(() => {
                 </div>
               </button>
             </div>
+            <p class="blog-row-hint"><i class="ri-arrow-left-right-line"></i> scroll for more</p>
           </div>
         </div>
       </div>
@@ -1006,6 +1108,134 @@ body {
 
   to {
     opacity: 1;
+  }
+}
+
+/* Home Hero: status badge, quick stats, CTAs */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 2px solid #000;
+  border-radius: 9999px;
+  padding: 6px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 20px;
+  box-shadow: 3px 3px 0px 0px rgba(0, 0, 0, 1);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.8);
+  animation: status-pulse 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes status-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.75);
+  }
+}
+
+.hero-stats {
+  display: flex;
+  gap: 32px;
+  margin-top: 28px;
+  justify-content: center;
+}
+
+.hero-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.hero-stat-num {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.hero-stat-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 28px;
+  justify-content: center;
+}
+
+.hero-cta-primary,
+.hero-cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 12px 22px;
+  border-radius: 8px;
+  border: 2px solid #000;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.hero-cta-primary {
+  background: #000;
+  color: #fff;
+  box-shadow: 4px 4px 0px 0px rgba(102, 126, 234, 0.6);
+}
+
+.hero-cta-primary:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0px 0px rgba(102, 126, 234, 0.6);
+}
+
+.hero-cta-secondary {
+  background: #fff;
+  color: #000;
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+}
+
+.hero-cta-secondary:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+}
+
+@media (max-width: 640px) {
+  .hero-stats {
+    gap: 20px;
+  }
+
+  .hero-stat-num {
+    font-size: 1.5rem;
+  }
+
+  .hero-cta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (min-width: 1024px) {
+  .hero-stats,
+  .hero-cta {
+    justify-content: flex-start;
   }
 }
 
@@ -1362,23 +1592,148 @@ body {
   color: rgba(167, 139, 250, 0.8) !important;
 }
 
-/* Blog Section */
-.blog-grid-container {
-  max-height: 52vh;
-  overflow-y: auto;
-  padding: 4px 4px 12px;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
+/* Journey Section - horizontal branching tree (desktop). A trunk line
+   runs across the middle; each milestone hangs off it as a stem that
+   branches alternately up and down to a card, like a roadmap/commit
+   graph rather than a plain vertical list. */
+.tree {
+  position: relative;
+  height: 460px;
+  margin-top: 20px;
 }
 
-.blog-grid-container::-webkit-scrollbar {
-  display: none;
+.tree-trunk {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 3px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, transparent, #667eea 10%, #764ba2 50%, #667eea 90%, transparent);
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.8), 0 0 40px rgba(118, 75, 162, 0.5);
 }
 
-.blog-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+.tree-nodes {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.tree-node {
+  position: relative;
+  flex: 1;
+}
+
+.tree-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border: 3px solid #000;
+  box-shadow: 0 0 15px rgba(102, 126, 234, 0.9);
+  z-index: 3;
+}
+
+.tree-stem {
+  position: absolute;
+  left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #667eea, #764ba2);
+  z-index: 1;
+}
+
+.tree-node.branch-up .tree-stem {
+  bottom: 50%;
+  height: 72px;
+}
+
+.tree-node.branch-down .tree-stem {
+  top: 50%;
+  height: 72px;
+}
+
+.tree-card {
+  position: absolute;
+  left: 50%;
+  width: 230px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  padding: 18px;
+  border-radius: 14px;
+  border: 2px solid rgba(102, 126, 234, 0.5);
+  color: white;
+  z-index: 2;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.tree-card:hover {
+  transform: translateX(-50%) scale(1.08);
+  border-color: rgba(102, 126, 234, 0.9);
+  box-shadow: 0 12px 48px rgba(102, 126, 234, 0.4), 0 0 40px rgba(118, 75, 162, 0.3);
+}
+
+.tree-node.branch-up .tree-card {
+  bottom: calc(50% + 72px);
+}
+
+.tree-node.branch-down .tree-card {
+  top: calc(50% + 72px);
+}
+
+.tree-card-year {
+  color: rgba(167, 139, 250, 0.9);
+}
+
+.tree-card-desc {
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.45;
+}
+
+@media (min-width: 1280px) {
+  .tree-card {
+    width: 260px;
+    padding: 22px;
+  }
+}
+
+/* Blog Section - a horizontal scroll row rather than a bounded-height
+   grid, so a 5th card never gets hard-clipped mid-content the way a
+   fixed max-height vertical grid would when it doesn't fit the viewport. */
+.blog-row-wrapper {
+  position: relative;
+  margin: 0 -4px;
+  padding: 4px 4px 0;
+  /* Fade the row's edges so it reads as "more to scroll" rather than an
+     abrupt cut - much clearer than a hidden scrollbar alone. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+}
+
+.blog-row {
+  display: flex;
   gap: 1.5rem;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 8px 24px 16px;
+  scrollbar-width: thin;
+}
+
+.blog-row-hint {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #9ca3af;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .blog-card {
@@ -1393,6 +1748,9 @@ body {
   cursor: pointer;
   box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 1);
   transition: all 0.25s ease;
+  flex: 0 0 300px;
+  width: 300px;
+  scroll-snap-align: start;
 }
 
 .blog-card:hover {
@@ -1569,8 +1927,9 @@ body {
 }
 
 @media (max-width: 768px) {
-  .blog-grid {
-    grid-template-columns: 1fr;
+  .blog-card {
+    flex-basis: 82vw;
+    width: 82vw;
   }
 
   .reader-scroll {
@@ -1882,29 +2241,49 @@ body {
   transition: none !important;
 }
 
-/* Curtain-wipe transition overlay for Next/Previous navigation */
+/* Strip-wipe transition overlay for Next/Previous navigation: the screen
+   is divided into horizontal strips that converge from alternating sides
+   (odd strips from the left, even from the right), hold fully closed for
+   a moment, then part back open the same way - like a bank of blinds. */
 .section-transition-overlay {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: linear-gradient(135deg, #050505 0%, #1a1a2e 45%, #050505 100%);
-  transform: translateY(-100%);
+  display: flex;
+  flex-direction: column;
   pointer-events: none;
 }
 
-.section-transition-overlay.active {
-  animation: curtain-wipe 0.7s cubic-bezier(0.65, 0, 0.35, 1);
+.transition-strip {
+  flex: 1;
+  transform: scaleX(0);
+  background: linear-gradient(135deg, #050505 0%, #1a1a2e 55%, #050505 100%);
 }
 
-@keyframes curtain-wipe {
+.transition-strip:nth-child(odd) {
+  transform-origin: left;
+}
+
+.transition-strip:nth-child(even) {
+  transform-origin: right;
+}
+
+.section-transition-overlay.active .transition-strip {
+  animation: strip-wipe 0.9s cubic-bezier(0.76, 0, 0.24, 1) both;
+}
+
+@keyframes strip-wipe {
   0% {
-    transform: translateY(-100%);
+    transform: scaleX(0);
   }
-  50% {
-    transform: translateY(0%);
+  40% {
+    transform: scaleX(1);
+  }
+  60% {
+    transform: scaleX(1);
   }
   100% {
-    transform: translateY(100%);
+    transform: scaleX(0);
   }
 }
 
