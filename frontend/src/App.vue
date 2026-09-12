@@ -26,36 +26,19 @@ const homeParticles = Array.from({ length: 14 }, () => ({
 let audioContext = null;
 let messageTimeoutId = null; // To hold the ID of our 4-second timeout
 
-// Next/Previous section navigation - a horizontal slider. currentSectionIndex
-// drives the slide position directly (see .slider-track's transform binding
-// in the template); there is no scroll position or IntersectionObserver to
-// keep in sync with it.
+// Next/Previous section navigation - a page-turn effect. Sections are
+// stacked (not laid side by side), each pinned full-screen with
+// position:absolute. currentSectionIndex is the section sitting flat and
+// visible; during a transition, flippingFromIndex names the outgoing one,
+// which rotates on a hinge (like a book page) to reveal the new current
+// section already sitting still underneath it.
 const currentSectionIndex = ref(0);
 const isTransitioning = ref(false);
-
-// Mosaic transition: a grid of tiles scales in (covering the screen) in a
-// diagonal wave, the section swaps position instantly while fully covered,
-// then the same wave scales the tiles back out to reveal it. Two explicit
-// phases (rather than one continuous per-tile keyframe) guarantee a real
-// "fully covered" instant to swap behind, regardless of the stagger - with
-// one keyframe alone, by the time the last tile finishes covering the
-// first ones would already be uncovering again.
-const MOSAIC_ROWS = 5;
-const MOSAIC_COLS = 9;
-const MOSAIC_STAGGER_MS = 18;
-const MOSAIC_TILE_DURATION_MS = 340;
-const MOSAIC_PHASE_MS = (MOSAIC_ROWS - 1 + MOSAIC_COLS - 1) * MOSAIC_STAGGER_MS + MOSAIC_TILE_DURATION_MS;
-
-const mosaicTiles = [];
-for (let r = 0; r < MOSAIC_ROWS; r++) {
-  for (let c = 0; c < MOSAIC_COLS; c++) {
-    mosaicTiles.push({ delay: (r + c) * MOSAIC_STAGGER_MS, alt: (r + c) % 2 === 0 });
-  }
-}
-
-const mosaicPhase = ref('idle'); // 'idle' | 'covering' | 'revealing'
-let mosaicCoverTimeoutId = null;
-let mosaicRevealTimeoutId = null;
+const flippingFromIndex = ref(null);
+const flipDirection = ref(null); // 'next' | 'prev' | null
+// Must match the .page-flip-out-*/.incoming-shadow animation-duration.
+const PAGE_FLIP_MS = 460;
+let flipTimeoutId = null;
 
 // Audio: a continuously looping background track (the uploaded song), plus
 // a short click sound synthesized with the Web Audio API (the same
@@ -124,34 +107,51 @@ const toggleMute = () => {
   }
 };
 
-const goToSection = (index) => {
+const goToSection = (index, direction) => {
   if (isTransitioning.value) return;
   const total = sectionIds.length;
   const newIndex = ((index % total) + total) % total;
   if (newIndex === currentSectionIndex.value) return;
 
+  if (!direction) {
+    // Nav links and dots jump straight to an index without saying which
+    // way that "is" - pick whichever way is the shorter turn, wrapping
+    // included, so it still reads as a natural forward/backward flip.
+    const forwardDist = (newIndex - currentSectionIndex.value + total) % total;
+    const backwardDist = (currentSectionIndex.value - newIndex + total) % total;
+    direction = forwardDist <= backwardDist ? 'next' : 'prev';
+  }
+
   playClickSound();
   isTransitioning.value = true;
-  mosaicPhase.value = 'covering';
+  flippingFromIndex.value = currentSectionIndex.value;
+  flipDirection.value = direction;
+  // The incoming section sits flat and already in place underneath the
+  // outgoing one from the very start - exactly like a real page turn,
+  // where the next page is already there before the current one lifts.
+  currentSectionIndex.value = newIndex;
 
-  clearTimeout(mosaicCoverTimeoutId);
-  clearTimeout(mosaicRevealTimeoutId);
-
-  mosaicCoverTimeoutId = setTimeout(() => {
-    // Fully covered by tiles now - jump the section position where it's
-    // invisible, then start the reveal wave.
-    currentSectionIndex.value = newIndex;
-    mosaicPhase.value = 'revealing';
-
-    mosaicRevealTimeoutId = setTimeout(() => {
-      mosaicPhase.value = 'idle';
-      isTransitioning.value = false;
-    }, MOSAIC_PHASE_MS);
-  }, MOSAIC_PHASE_MS);
+  clearTimeout(flipTimeoutId);
+  flipTimeoutId = setTimeout(() => {
+    flippingFromIndex.value = null;
+    flipDirection.value = null;
+    isTransitioning.value = false;
+  }, PAGE_FLIP_MS);
 };
 
-const nextSection = () => goToSection(currentSectionIndex.value + 1);
-const prevSection = () => goToSection(currentSectionIndex.value - 1);
+const nextSection = () => goToSection(currentSectionIndex.value + 1, 'next');
+const prevSection = () => goToSection(currentSectionIndex.value - 1, 'prev');
+
+// Per-slide state for the page-turn effect (see PAGE_FLIP_MS/goToSection):
+// the current section and the one flipping away both need to render
+// (stacked, both visible) during a transition; every other section stays
+// hidden off to the side of the flip.
+const slideStateClass = (idx) => ({
+  'slide-hidden': idx !== currentSectionIndex.value && idx !== flippingFromIndex.value,
+  'slide-flip-out-next': idx === flippingFromIndex.value && flipDirection.value === 'next',
+  'slide-flip-out-prev': idx === flippingFromIndex.value && flipDirection.value === 'prev',
+  'slide-flip-in': idx === currentSectionIndex.value && isTransitioning.value,
+});
 
 const handleKeydownNav = (e) => {
   if (isLoading.value || showRAGModal.value) return;
@@ -539,8 +539,7 @@ const readPrevPost = () => {
 
 onUnmounted(() => {
   clearTimeout(messageTimeoutId); // Clean up the timer
-  clearTimeout(mosaicCoverTimeoutId);
-  clearTimeout(mosaicRevealTimeoutId);
+  clearTimeout(flipTimeoutId);
   if (bgmAudio) bgmAudio.pause();
   document.removeEventListener('mousedown', enterSite);
   document.removeEventListener('keydown', enterSite);
@@ -595,14 +594,6 @@ onUnmounted(() => {
           </a>
         </div>
       </div>
-    </div>
-
-    <!-- Mosaic transition overlay: a grid of tiles scales in to cover the
-         screen in a diagonal wave, the section swaps underneath, then the
-         same wave scales the tiles back out to reveal it. -->
-    <div class="mosaic-overlay" :class="mosaicPhase">
-      <span v-for="(tile, i) in mosaicTiles" :key="i" class="mosaic-tile" :class="{ alt: tile.alt }"
-        :style="{ animationDelay: tile.delay + 'ms' }"></span>
     </div>
 
     <!-- Floating Next / Previous section navigation -->
@@ -686,8 +677,8 @@ onUnmounted(() => {
     </div>
 
     <main class="slider-viewport">
-      <div class="slider-track" :style="{ transform: `translateX(-${currentSectionIndex * 100}%)` }">
-      <div id="home" class="slide">
+      <div class="slider-track">
+      <div id="home" class="slide" :class="slideStateClass(0)">
       <div class="content-section w-full px-4 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
@@ -730,7 +721,7 @@ onUnmounted(() => {
       </div>
       </div>
 
-      <div id="projects" class="slide bg-black text-white">
+      <div id="projects" class="slide bg-black text-white" :class="slideStateClass(1)">
       <div class="content-section w-full px-4 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
           <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 leading-tight">Projects</h1>
@@ -748,7 +739,7 @@ onUnmounted(() => {
       </div>
       </div>
 
-      <div id="skills" class="slide bg-white">
+      <div id="skills" class="slide bg-white" :class="slideStateClass(2)">
       <div class="content-section w-full px-4 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
@@ -779,7 +770,7 @@ onUnmounted(() => {
       </div>
       </div>
 
-      <div id="journey" class="slide bg-black text-white">
+      <div id="journey" class="slide bg-black text-white" :class="slideStateClass(3)">
       <div class="content-section w-full px-4 lg:px-8 flex flex-col items-center">
         <!-- Data Visualization Background Elements -->
         <svg class="data-viz-background" viewBox="0 0 400 300">
@@ -856,7 +847,7 @@ onUnmounted(() => {
       </div>
       </div>
 
-      <div id="blog" class="slide bg-white">
+      <div id="blog" class="slide bg-white" :class="slideStateClass(4)">
       <div class="content-section w-full px-4 lg:px-8 flex flex-col items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
@@ -1958,80 +1949,40 @@ body {
   }
 }
 
-/* Horizontal slider: Next/Previous/dots/nav-links all just change
-   currentSectionIndex, which drives this transform - the slide itself
-   *is* the transition, no overlay trick needed. */
+/* Page-turn transition: sections are stacked (not laid side by side).
+   Next/Previous/dots/nav-links change currentSectionIndex, which is
+   already sitting flat underneath from the start of the transition (see
+   goToSection) - the outgoing section (.slide-flip-out-*) rotates away
+   on a hinge, like a book page, to reveal it. perspective on the
+   viewport is what gives that rotation real 3D depth instead of just
+   looking like a flat horizontal squish. */
 .slider-viewport {
   position: relative;
   width: 100%;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
+  perspective: 2200px;
 }
 
 .slider-track {
-  display: flex;
+  position: relative;
+  width: 100%;
   height: 100%;
-  /* No transition here - the mosaic overlay (see .mosaic-overlay below)
-     fully covers the screen before this jumps position and clears after,
-     so the jump itself is instant and invisible. */
-}
-
-/* Mosaic transition overlay */
-.mosaic-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: grid;
-  grid-template-columns: repeat(9, 1fr);
-  grid-template-rows: repeat(5, 1fr);
-  pointer-events: none;
-}
-
-.mosaic-tile {
-  transform: scale(0);
-  background: linear-gradient(135deg, #05050a 0%, #1a1a2e 100%);
-}
-
-.mosaic-tile.alt {
-  background: linear-gradient(135deg, #302b63 0%, #667eea 100%);
-}
-
-.mosaic-overlay.covering .mosaic-tile {
-  animation: mosaic-tile-in 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-
-.mosaic-overlay.revealing .mosaic-tile {
-  animation: mosaic-tile-out 0.34s cubic-bezier(0.36, 0, 0.66, 1) both;
-}
-
-@keyframes mosaic-tile-in {
-  from {
-    transform: scale(0);
-  }
-  to {
-    transform: scale(1.02);
-  }
-}
-
-@keyframes mosaic-tile-out {
-  from {
-    transform: scale(1.02);
-  }
-  to {
-    transform: scale(0);
-  }
 }
 
 .slide {
-  position: relative;
-  flex: 0 0 100%;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1;
+  transform: rotateY(0deg);
+  backface-visibility: hidden;
   /* Reserve exactly enough space to clear the fixed navbar (top) and the
      floating Next/Prev bar (bottom), so content centers between them
      with no scroll. --nav-clearance/--bottom-clearance are measured from
@@ -2050,8 +2001,96 @@ body {
   padding-bottom: var(--bottom-clearance, 9rem);
 }
 
+.slide-hidden {
+  display: none;
+}
+
+.slide-flip-out-next,
+.slide-flip-out-prev {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.slide-flip-out-next {
+  transform-origin: left center;
+  animation: page-flip-out-next 0.45s ease-in both;
+}
+
+.slide-flip-out-prev {
+  transform-origin: right center;
+  animation: page-flip-out-prev 0.45s ease-in both;
+}
+
+/* Pure rotation, no opacity/scale involved: the incoming page underneath
+   is always fully opaque and static, so it must only ever become visible
+   through backface-visibility:hidden cutting the outgoing page off past
+   90deg - never through a transparency blend, which (tried first) showed
+   both pages' text double-exposed over each other for the entire time
+   both were partway faded. ease-in (slow start, fast finish) means it
+   lingers fully readable near 0deg, then swings quickly through the
+   ~40-90deg range where flat DOM text looks skewed/mangled rather than
+   like a solid turning page - a real page-turn flips a rasterized image,
+   immune to that; live text isn't, so the fix is to not linger there. */
+@keyframes page-flip-out-next {
+  0% {
+    transform: rotateY(0deg);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  60% {
+    box-shadow: 50px 0 90px rgba(0, 0, 0, 0.4);
+  }
+  100% {
+    transform: rotateY(-180deg);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+@keyframes page-flip-out-prev {
+  0% {
+    transform: rotateY(0deg);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  60% {
+    box-shadow: -50px 0 90px rgba(0, 0, 0, 0.4);
+  }
+  100% {
+    transform: rotateY(180deg);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+/* A shadow sweeping over the incoming page as the outgoing one passes
+   over it, fading away - depth polish that (unlike the page-flip-in
+   attempt above) never touches the incoming page's own opacity or
+   content, so it can't reintroduce that double-exposure problem. */
+.slide-flip-in::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.35), transparent 55%);
+  animation: incoming-shadow 0.45s ease-out both;
+}
+
+@keyframes incoming-shadow {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @media (max-width: 1023px) {
-  .slide {
+  /* :not(.slide-hidden) isn't just belt-and-suspenders here: .slide-hidden
+     and this rule have equal specificity (one class each), and this rule
+     comes later in the stylesheet - without the :not(), it would win and
+     force display:block on hidden slides too, undoing the hide (every
+     section stacking visibly on top of each other; whichever is last in
+     the DOM paints on top of the rest, regardless of which is actually
+     "current"). */
+  .slide:not(.slide-hidden) {
     /* Plain block flow instead of flex-centering below lg: centering an
        overflowing flex child can leave its top edge unreachable by
        scroll in some browsers, whereas block flow with padding-top for
