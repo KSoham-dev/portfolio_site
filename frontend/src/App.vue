@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
+import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import projectDisplay from '/src/components/projectDisplay.vue';
 import RAGChat from '/src/components/RAGChat.vue';
 import { getIconName, getIconCdnUrl } from '/iconutils.js';
@@ -12,12 +12,140 @@ const showExplicitMessage = ref(false);
 // State for RAG chat modal
 const showRAGModal = ref(false);
 
-const visibleSections = ref({});
-let observer = null;
-const sectionIds = ['home', 'projects', 'skills', 'journey'];
+const sectionIds = ['home', 'projects', 'skills', 'journey', 'blog'];
+
+// Static scatter for the Home section's ambient floating particles -
+// generated once, not reactive (they never need to change).
+const homeParticles = Array.from({ length: 14 }, () => ({
+  left: Math.random() * 100,
+  bottom: Math.random() * 70,
+  delay: Math.random() * 10,
+  duration: 10 + Math.random() * 6
+}));
 
 let audioContext = null;
 let messageTimeoutId = null; // To hold the ID of our 4-second timeout
+
+// Next/Previous section navigation - a page-turn effect. Sections are
+// stacked (not laid side by side), each pinned full-screen with
+// position:absolute. currentSectionIndex is the section sitting flat and
+// visible; during a transition, flippingFromIndex names the outgoing one,
+// which rotates on a hinge (like a book page) to reveal the new current
+// section already sitting still underneath it.
+const currentSectionIndex = ref(0);
+const isTransitioning = ref(false);
+const flippingFromIndex = ref(null);
+const flipDirection = ref(null); // 'next' | 'prev' | null
+// Must match the .page-flip-out-*/.incoming-shadow animation-duration.
+const PAGE_FLIP_MS = 460;
+let flipTimeoutId = null;
+
+// Audio: short sounds synthesized with the Web Audio API (the same
+// audioContext used for the welcome chime) rather than audio files - a
+// click for navigation/buttons, and a separate texture for the Home
+// photo's hover-reveal.
+const playClickSound = () => {
+  if (isMuted.value || !audioContext) return;
+  try {
+    if (audioContext.state === 'suspended') audioContext.resume();
+    const now = audioContext.currentTime;
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(950, now);
+    oscillator.frequency.exponentialRampToValueAtTime(240, now + 0.05);
+    gainNode.gain.setValueAtTime(0.0001, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.3, now + 0.005);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+    oscillator.start(now);
+    oscillator.stop(now + 0.08);
+  } catch (e) {
+    console.error('Could not play click sound.', e);
+  }
+};
+
+// Mute toggle - silences both the background music and the click sound,
+// remembered across visits.
+const isMuted = ref(false);
+try {
+  isMuted.value = localStorage.getItem('portfolio-muted') === 'true';
+} catch (e) {
+  // localStorage unavailable (e.g. private browsing) - default to unmuted
+}
+
+const toggleMute = () => {
+  isMuted.value = !isMuted.value;
+  try {
+    localStorage.setItem('portfolio-muted', String(isMuted.value));
+  } catch (e) {
+    // ignore persistence failures
+  }
+  if (!isMuted.value) {
+    playClickSound(); // confirmation click
+  }
+};
+
+const goToSection = (index, direction) => {
+  if (isTransitioning.value) return;
+  const total = sectionIds.length;
+  const newIndex = ((index % total) + total) % total;
+  if (newIndex === currentSectionIndex.value) return;
+
+  if (!direction) {
+    // Nav links and dots jump straight to an index without saying which
+    // way that "is" - pick whichever way is the shorter turn, wrapping
+    // included, so it still reads as a natural forward/backward flip.
+    const forwardDist = (newIndex - currentSectionIndex.value + total) % total;
+    const backwardDist = (currentSectionIndex.value - newIndex + total) % total;
+    direction = forwardDist <= backwardDist ? 'next' : 'prev';
+  }
+
+  playClickSound();
+  isTransitioning.value = true;
+  flippingFromIndex.value = currentSectionIndex.value;
+  flipDirection.value = direction;
+  // The incoming section sits flat and already in place underneath the
+  // outgoing one from the very start - exactly like a real page turn,
+  // where the next page is already there before the current one lifts.
+  currentSectionIndex.value = newIndex;
+
+  clearTimeout(flipTimeoutId);
+  flipTimeoutId = setTimeout(() => {
+    flippingFromIndex.value = null;
+    flipDirection.value = null;
+    isTransitioning.value = false;
+  }, PAGE_FLIP_MS);
+};
+
+const nextSection = () => goToSection(currentSectionIndex.value + 1, 'next');
+const prevSection = () => goToSection(currentSectionIndex.value - 1, 'prev');
+
+// Per-slide state for the page-turn effect (see PAGE_FLIP_MS/goToSection):
+// the current section and the one flipping away both need to render
+// (stacked, both visible) during a transition; every other section stays
+// hidden off to the side of the flip.
+const slideStateClass = (idx) => ({
+  'slide-hidden': idx !== currentSectionIndex.value && idx !== flippingFromIndex.value,
+  'slide-flip-out-next': idx === flippingFromIndex.value && flipDirection.value === 'next',
+  'slide-flip-out-prev': idx === flippingFromIndex.value && flipDirection.value === 'prev',
+  'slide-flip-in': idx === currentSectionIndex.value && isTransitioning.value,
+});
+
+const handleKeydownNav = (e) => {
+  if (isLoading.value || showRAGModal.value) return;
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown') {
+    e.preventDefault();
+    nextSection();
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') {
+    e.preventDefault();
+    prevSection();
+  }
+};
 
 /**
  * This function handles the user's entry into the site.
@@ -38,6 +166,10 @@ const enterSite = () => {
 
   // Switch from the welcome screen to the main content
   isLoading.value = false;
+
+  // The navbar/bottom-nav are only actually rendered (not display:none)
+  // once isLoading flips, so measure clearances after that DOM update.
+  nextTick(() => updateSlideClearances());
 
   // Clean up the event listeners now that they've served their purpose
   document.removeEventListener('mousedown', enterSite);
@@ -89,24 +221,10 @@ onMounted(() => {
   // Disable right click
   document.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  // IntersectionObserver logic remains the same
-  observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        visibleSections.value[entry.target.id] = entry.isIntersecting;
-      });
-    }, { threshold: 0.1 }
-  );
+  // Keyboard navigation for next/previous section
+  document.addEventListener('keydown', handleKeydownNav);
 
-  sectionIds.forEach(id => {
-    const element = document.getElementById(id);
-    if (element) {
-      observer.observe(element);
-    }
-  });
-  
-  // Start code typing animation
-  setTimeout(() => typeCode(), 2000);
+  window.addEventListener('resize', updateViewportWidth);
 });
 
 // The rest of your component logic remains unchanged
@@ -136,7 +254,36 @@ const revealProgress = ref(0);
 let animationId = null;
 const revealSpeed = 2; // Percentage per frame (adjust for speed)
 
+// A quick ascending run of short square-wave blips - a "digitizing"
+// texture distinct from the click's single descending sine ping - played
+// once when the pixelated overlay starts revealing on hover.
+const playHoverSound = () => {
+  if (isMuted.value || !audioContext) return;
+  try {
+    if (audioContext.state === 'suspended') audioContext.resume();
+    const now = audioContext.currentTime;
+    const steps = [520, 720, 980, 1300];
+    steps.forEach((freq, i) => {
+      const start = now + i * 0.035;
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.type = 'square';
+      oscillator.frequency.setValueAtTime(freq, start);
+      gainNode.gain.setValueAtTime(0.0001, start);
+      gainNode.gain.exponentialRampToValueAtTime(0.05, start + 0.005);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, start + 0.03);
+      oscillator.start(start);
+      oscillator.stop(start + 0.035);
+    });
+  } catch (e) {
+    console.error('Could not play hover sound.', e);
+  }
+};
+
 const startReveal = () => {
+  playHoverSound();
   const animate = () => {
     if (revealProgress.value < 100) {
       revealProgress.value = Math.min(100, revealProgress.value + revealSpeed);
@@ -192,10 +339,40 @@ const skills = computed(() => {
   });
 });
 
+// Tracks viewport width so the skill-circle radius below can shrink on
+// narrow screens - it's used in an inline transform, not CSS, so a plain
+// media query can't reach it.
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280);
+const updateViewportWidth = () => {
+  viewportWidth.value = window.innerWidth;
+  updateSlideClearances();
+};
+
+// Each .slide reserves top/bottom padding to clear the fixed navbar and
+// the floating Next/Previous bar, so section content can be centered
+// between them with no scroll. Rather than guessing those two heights as
+// fixed rem values (which drift out of sync with the real elements and
+// either clip content or waste space), measure the actual rendered boxes
+// and expose them as CSS custom properties the .slide padding reads.
+const navbarWrapperEl = ref(null);
+const bottomNavWrapperEl = ref(null);
+
+const updateSlideClearances = () => {
+  if (!navbarWrapperEl.value || !bottomNavWrapperEl.value) return;
+  const navBottom = navbarWrapperEl.value.getBoundingClientRect().bottom;
+  const bottomNavHeight = window.innerHeight - bottomNavWrapperEl.value.getBoundingClientRect().top;
+  // A little breathing room past each element's own edge.
+  document.documentElement.style.setProperty('--nav-clearance', `${Math.ceil(navBottom) + 24}px`);
+  document.documentElement.style.setProperty('--bottom-clearance', `${Math.ceil(bottomNavHeight) + 24}px`);
+};
+
 // Function to calculate circular position for skill icons
 const getSkillPosition = (index, total) => {
   const angle = (index / total) * 2 * Math.PI - Math.PI / 2;
-  const radius = 220; // Increased from 160 for fuller display
+  // Fixed radius overflowed narrow viewports - the mobile CSS already
+  // shrinks the container and icons, but this radius is applied via
+  // inline transform, so it needs its own breakpoint here.
+  const radius = viewportWidth.value < 640 ? 130 : 220;
   const x = Math.cos(angle) * radius;
   const y = Math.sin(angle) * radius;
   return {
@@ -203,94 +380,166 @@ const getSkillPosition = (index, total) => {
   };
 };
 
-// Journey data
+// Journey data - oldest first, so the tree (rendered left-to-right in
+// this order) reads chronologically left-to-right, older to newer.
 const educationData = ref([
   {
     id: 0,
-    degree: 'ML Engineer Intern',
-    institution: 'Helloramp.ai',
-    year: 'Nov 2025 - Present',
-    description: 'Working on cutting-edge machine learning models and AI solutions.'
-  },
-  {
-    id: 1,
     degree: 'Bachelor of Science in Data Science',
     institution: 'IIT Madras',
     year: 'Sept 2022 - present',
     description: 'Specializing in Machine Learning, Deep Learning, and Big Data Analytics.'
   },
   {
-    id: 2,
-    degree: 'Higher Secondary Certificate',
-    institution: 'Junior College',
-    year: 'Sept 2020 - June 2022',
-    description: 'Completed pre-university education with focus on Mathematics, Physics, and Computer Science.'
-  },
-  {
-    id: 3,
-    degree: 'Secondary School Certificate',
-    institution: 'High School',
-    year: 'June 2020',
-    description: 'Foundation years building strong analytical and problem-solving skills.'
+    id: 1,
+    degree: 'ML Engineer Intern',
+    institution: 'Helloramp.ai',
+    year: 'Nov 2025 - Present',
+    description: 'Working on cutting-edge machine learning models and AI solutions.'
   }
 ]);
 
-// Code snippets for showcase
-const codeSnippets = [
-  `# Neural Network Training
-model = Sequential([
-  Dense(128, activation='relu'),
-  Dropout(0.2),
-  Dense(10, activation='softmax')
-])
-model.compile(optimizer='adam',
-              loss='categorical_crossentropy')`,
-  `# Data Analysis Pipeline
-df = pd.read_csv('data.csv')
-X = df.drop('target', axis=1)
-y = df['target']
-X_train, X_test = train_test_split(X, y)
-model.fit(X_train, y_train)`,
-  `# Deep Learning with PyTorch
-class NeuralNet(nn.Module):
-  def __init__(self):
-    super().__init__()
-    self.fc1 = nn.Linear(784, 256)
-    self.fc2 = nn.Linear(256, 10)
-  def forward(self, x):
-    return F.softmax(self.fc2(F.relu(self.fc1(x))))`
-];
-const currentSnippetIndex = ref(0);
-const displayedCode = ref('');
-const isTyping = ref(false);
-
-const typeCode = async () => {
-  if (isTyping.value) return;
-  isTyping.value = true;
-  
-  const snippet = codeSnippets[currentSnippetIndex.value];
-  displayedCode.value = '';
-  
-  for (let i = 0; i < snippet.length; i++) {
-    displayedCode.value += snippet[i];
-    await new Promise(resolve => setTimeout(resolve, 20));
+// Blog data
+const blogPosts = ref([
+  {
+    id: 'feature-engineering',
+    tag: 'Machine Learning',
+    title: 'Why Feature Engineering Still Beats Fancy Models',
+    date: 'Aug 2026',
+    readTime: '6 min read',
+    excerpt: 'A well-chosen feature will outrun a poorly-fed transformer every time. Here is what I keep relearning on real datasets.',
+    body: [
+      { type: 'p', text: "Every few months a new architecture shows up promising to make feature engineering obsolete. In practice, on the messy tabular datasets most of us actually work with, a thoughtfully engineered feature set still beats throwing raw columns at a bigger model. I learned this the hard way on a churn-prediction project where switching from raw timestamps to 'days since last purchase' improved recall more than three different model upgrades combined." },
+      { type: 'h2', text: 'Start with domain logic, not correlation matrices' },
+      { type: 'p', text: "It's tempting to let a correlation heatmap or SHAP plot tell you what matters. But those tools only rank what you already handed the model. If 'time since last login' isn't in your dataframe, no importance score will ever surface it. Spend the first hour with domain experts, not with pandas.corr()." },
+      { type: 'code', lang: 'python', text: "# Turning a raw timestamp into signal the model can actually use\ndf['days_since_last_purchase'] = (\n    pd.Timestamp.now() - df['last_purchase_at']\n).dt.days\n\ndf['purchase_frequency'] = (\n    df.groupby('customer_id')['order_id'].transform('count')\n    / df['days_since_last_purchase'].clip(lower=1)\n)" },
+      { type: 'h2', text: 'Ratios and rates beat raw counts' },
+      { type: 'p', text: "Raw counts are rarely stationary - a customer active for two years will naturally have more orders than one active for two months. Normalizing counts into rates (orders per active month, spend per session) makes the feature comparable across the population, which is usually what the model needs to separate classes cleanly." },
+      { type: 'p', text: "None of this replaces a good model. But I've found the ceiling on a well-engineered feature set with a plain gradient-boosted tree is often higher than the ceiling on raw features with a deep network, and it gets there in a fraction of the training time." }
+    ]
+  },
+  {
+    id: 'imbalanced-data',
+    tag: 'Data Science',
+    title: 'Handling Imbalanced Datasets Without Losing Your Mind',
+    date: 'Jul 2026',
+    readTime: '7 min read',
+    excerpt: 'Accuracy lies when 98% of your data belongs to one class. A field guide to the techniques that actually move the needle.',
+    body: [
+      { type: 'p', text: "The first time I trained a fraud-detection model, it hit 99.1% accuracy and detected exactly zero fraud cases. That's the imbalanced-data trap: when one class dominates, a model can look brilliant on the wrong metric while learning nothing useful." },
+      { type: 'h2', text: 'Fix the metric before you fix the data' },
+      { type: 'p', text: 'Before touching the dataset, swap accuracy for precision, recall, and PR-AUC. Accuracy rewards a model for predicting the majority class every time. PR-AUC specifically cares about how well you rank the minority class, which is usually the one you actually care about.' },
+      { type: 'h2', text: 'Resampling, but carefully' },
+      { type: 'p', text: "SMOTE and its variants can help, but they synthesize points in feature space that may not correspond to anything real - especially with categorical or high-dimensional data. I've had more consistent luck with class-weighted loss functions, which nudge the model without inventing data." },
+      { type: 'code', lang: 'python', text: "from sklearn.utils.class_weight import compute_class_weight\n\nweights = compute_class_weight(\n    class_weight='balanced',\n    classes=np.unique(y_train),\n    y=y_train\n)\nclass_weight_dict = dict(zip(np.unique(y_train), weights))\n\nmodel = XGBClassifier(scale_pos_weight=weights[1] / weights[0])\nmodel.fit(X_train, y_train)" },
+      { type: 'p', text: "Whatever technique you choose, always evaluate on an untouched, naturally-imbalanced validation set. Resampling the training data is fine; resampling your judgment of how the model performs in the real world is not." }
+    ]
+  },
+  {
+    id: 'boosting-libraries',
+    tag: 'ML Engineering',
+    title: 'XGBoost vs LightGBM vs CatBoost: Picking Your Boosting Library',
+    date: 'Jun 2026',
+    readTime: '8 min read',
+    excerpt: 'Three excellent gradient-boosting libraries, three very different defaults. Here is how I decide which one to reach for.',
+    body: [
+      { type: 'p', text: "Gradient-boosted trees still win a disproportionate share of tabular-data competitions and production pipelines, and for good reason - they're fast, interpretable-ish, and forgiving of messy features. The question I get asked most is which library to start with." },
+      { type: 'h2', text: 'XGBoost: the reliable default' },
+      { type: 'p', text: "XGBoost is the one I reach for when I need something battle-tested with a huge community and predictable behavior across environments. Its regularization options (L1/L2 on leaf weights) make it a good first line of defense against overfitting on smaller datasets." },
+      { type: 'h2', text: 'LightGBM: when data gets large' },
+      { type: 'p', text: "LightGBM's leaf-wise growth (instead of level-wise) trains noticeably faster on large datasets and handles high-cardinality categoricals more gracefully out of the box. The tradeoff is it can overfit small datasets more easily if you leave max_depth unconstrained." },
+      { type: 'h2', text: 'CatBoost: when categoricals dominate' },
+      { type: 'p', text: "If your dataset is mostly categorical columns with lots of unique values, CatBoost's ordered target encoding saves you from writing your own encoding pipeline and from the target leakage that naive encodings introduce." },
+      { type: 'code', lang: 'python', text: "# A reasonable starting point for a quick benchmark across all three\nfor name, Model in [('xgb', XGBClassifier), ('lgb', LGBMClassifier), ('cat', CatBoostClassifier)]:\n    model = Model(n_estimators=500, learning_rate=0.05, random_state=42)\n    model.fit(X_train, y_train)\n    print(name, roc_auc_score(y_val, model.predict_proba(X_val)[:, 1]))" },
+      { type: 'p', text: "In practice I benchmark all three on a held-out split before committing - the 'best' library changes with dataset size, categorical density, and how much time you have for hyperparameter tuning." }
+    ]
+  },
+  {
+    id: 'notebook-to-production',
+    tag: 'MLOps',
+    title: 'From Notebook to Production: Lessons Learned the Hard Way',
+    date: 'May 2026',
+    readTime: '9 min read',
+    excerpt: 'A model that works in a Jupyter cell is a prototype, not a product. The gap between the two taught me more than any course did.',
+    body: [
+      { type: 'p', text: "My first deployed model broke in production within a week - not because the model was wrong, but because the notebook that trained it and the service that served it disagreed about how a column was encoded. Nobody warns you that the hardest part of ML engineering is rarely the ML." },
+      { type: 'h2', text: 'Pin your preprocessing, not just your model' },
+      { type: 'p', text: "A pickled model file is useless without the exact preprocessing pipeline that produced its training features. I now wrap preprocessing and model into a single sklearn Pipeline (or an equivalent) and version them together, so 'the model' and 'the transform' can never drift apart." },
+      { type: 'code', lang: 'python', text: "pipeline = Pipeline([\n    ('preprocess', ColumnTransformer([\n        ('num', StandardScaler(), numeric_cols),\n        ('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols),\n    ])),\n    ('model', XGBClassifier(n_estimators=300)),\n])\npipeline.fit(X_train, y_train)\njoblib.dump(pipeline, 'model_v3.joblib')" },
+      { type: 'h2', text: 'Monitor inputs, not just outputs' },
+      { type: 'p', text: "Model performance dashboards are useless if the ground truth arrives weeks later. What catches problems early is watching the input distribution - if a feature's mean or missing-rate suddenly shifts, something upstream broke, and you want to know before the accuracy metric quietly decays." },
+      { type: 'p', text: "None of this is glamorous, and none of it shows up in a Kaggle leaderboard. But it's the difference between a model that works once and a model that keeps working." }
+    ]
+  },
+  {
+    id: 'attention-explained',
+    tag: 'Deep Learning',
+    title: 'Attention Mechanisms, Explained Without the Math Headache',
+    date: 'Apr 2026',
+    readTime: '7 min read',
+    excerpt: 'Forget the equations for a second. Attention is just a very structured way of asking "what should I be looking at right now?"',
+    body: [
+      { type: 'p', text: "Attention gets introduced with a wall of matrix multiplications, and that's a shame, because the underlying idea is almost embarrassingly intuitive: for every word, decide how much to 'pay attention' to every other word before deciding what it means in context." },
+      { type: 'h2', text: 'A translation analogy' },
+      { type: 'p', text: "Imagine translating 'the bank was steep' versus 'the bank approved the loan'. The word 'bank' needs different context each time - 'steep' pulls it toward a riverbank, 'loan' pulls it toward a financial institution. Attention is the mechanism that lets the model look at the surrounding words and weight them by relevance before forming its final representation of 'bank'." },
+      { type: 'h2', text: 'Queries, keys, and values - as a search engine' },
+      { type: 'p', text: "The Query/Key/Value framing clicked for me once I thought of it as a search engine. The Query is your search term. Every word in the sentence offers a Key (how it advertises itself) and a Value (the actual content it contributes). Attention scores each Key against your Query, and the output is a weighted blend of Values - weighted more heavily toward whichever words' Keys matched best." },
+      { type: 'code', lang: 'python', text: "# Simplified single-head attention, stripped of batching/masking\nscores = (Q @ K.T) / np.sqrt(d_k)      # how well each key matches the query\nweights = softmax(scores, axis=-1)     # normalize into a distribution\noutput = weights @ V                    # blend values by attention weight" },
+      { type: 'p', text: "Multi-head attention is just running several of these searches in parallel, each free to learn a different notion of 'relevance' - one head might track syntax, another might track long-range topic coherence. Stack enough of these and you get a model that builds context almost the way we do: by constantly re-weighing what matters given everything around it." }
+    ]
   }
-  
-  await new Promise(resolve => setTimeout(resolve, 3000));
-  currentSnippetIndex.value = (currentSnippetIndex.value + 1) % codeSnippets.length;
-  isTyping.value = false;
-  typeCode();
+]);
+
+const showBlogReader = ref(false);
+const activeBlogPost = ref(null);
+const readerScrollEl = ref(null);
+const activeBlogIndex = computed(() =>
+  activeBlogPost.value ? blogPosts.value.findIndex((p) => p.id === activeBlogPost.value.id) : -1
+);
+
+const resetReaderScroll = () => {
+  nextTick(() => {
+    if (readerScrollEl.value) readerScrollEl.value.scrollTop = 0;
+  });
 };
 
+const openBlogPost = (post) => {
+  playClickSound();
+  activeBlogPost.value = post;
+  showBlogReader.value = true;
+  resetReaderScroll();
+};
+
+const closeBlogReader = () => {
+  playClickSound();
+  showBlogReader.value = false;
+};
+
+const readNextPost = () => {
+  if (activeBlogIndex.value === -1) return;
+  playClickSound();
+  const nextIndex = (activeBlogIndex.value + 1) % blogPosts.value.length;
+  activeBlogPost.value = blogPosts.value[nextIndex];
+  resetReaderScroll();
+};
+
+const readPrevPost = () => {
+  if (activeBlogIndex.value === -1) return;
+  playClickSound();
+  const total = blogPosts.value.length;
+  const prevIndex = (activeBlogIndex.value - 1 + total) % total;
+  activeBlogPost.value = blogPosts.value[prevIndex];
+  resetReaderScroll();
+};
 
 onUnmounted(() => {
   clearTimeout(messageTimeoutId); // Clean up the timer
+  clearTimeout(flipTimeoutId);
   document.removeEventListener('mousedown', enterSite);
   document.removeEventListener('keydown', enterSite);
   document.removeEventListener('mousedown', handleClickOutside);
-  if (observer) {
-    observer.disconnect();
-  }
+  document.removeEventListener('keydown', handleKeydownNav);
+  window.removeEventListener('resize', updateViewportWidth);
 });
 </script>
 
@@ -311,30 +560,58 @@ onUnmounted(() => {
 
   <div v-show="!isLoading" class="main-content">
 
-    <div class="fixed top-4 left-4 right-4 md:top-6 md:left-6 md:right-6 z-50">
+    <div ref="navbarWrapperEl" class="fixed top-4 left-4 right-4 md:top-6 md:left-6 md:right-6 z-50">
       <div
         class="navbar p-4 rounded-2xl bg-white/90 backdrop-blur-lg shadow-md flex items-center justify-center lg:justify-between border-2 border-black border-solid">
         <div class="text-2xl font-bold">SK</div>
 
         <div class="hidden lg:flex items-center space-x-2 sm:space-x-4">
-          <a href="#home"
-            class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          <a href="#home" @click.prevent="goToSection(0)" :class="{ 'nav-link-active': currentSectionIndex === 0 }"
+            class="nav-link w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
             Home
           </a>
-          <a href="#projects"
-            class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          <a href="#projects" @click.prevent="goToSection(1)" :class="{ 'nav-link-active': currentSectionIndex === 1 }"
+            class="nav-link w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
             Projects
           </a>
-          <a href="#skills"
-            class="w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          <a href="#skills" @click.prevent="goToSection(2)" :class="{ 'nav-link-active': currentSectionIndex === 2 }"
+            class="nav-link w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
             Skills
           </a>
-          <a href="#journey"
-            class="w-28 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
+          <a href="#journey" @click.prevent="goToSection(3)" :class="{ 'nav-link-active': currentSectionIndex === 3 }"
+            class="nav-link w-28 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
             Journey
+          </a>
+          <a href="#blog" @click.prevent="goToSection(4)" :class="{ 'nav-link-active': currentSectionIndex === 4 }"
+            class="nav-link w-24 bg-white border-2 border-black rounded text-black font-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black">
+            Blog
           </a>
         </div>
       </div>
+    </div>
+
+    <!-- Floating Next / Previous section navigation -->
+    <div ref="bottomNavWrapperEl" class="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 sm:gap-3">
+      <button @click="toggleMute" :aria-label="isMuted ? 'Unmute click sound' : 'Mute click sound'"
+        class="section-nav-arrow mute-toggle">
+        <i :class="isMuted ? 'ri-volume-mute-line' : 'ri-volume-up-line'"></i>
+      </button>
+
+      <button @click="prevSection" :disabled="isTransitioning" aria-label="Previous section"
+        class="section-nav-arrow">
+        <i class="ri-arrow-left-line"></i>
+      </button>
+
+      <div class="section-dots">
+        <button v-for="(id, idx) in sectionIds" :key="id" @click="goToSection(idx)"
+          :class="['section-dot', { active: currentSectionIndex === idx }]" :aria-label="`Go to ${id}`"></button>
+      </div>
+
+      <button @click="nextSection" :disabled="isTransitioning" aria-label="Next section"
+        class="section-nav-arrow section-nav-arrow-next">
+        <span class="hidden sm:inline">Next</span>
+        <i class="ri-arrow-right-line"></i>
+      </button>
     </div>
 
     <div v-if="isSocialMenuOpen"
@@ -348,43 +625,43 @@ onUnmounted(() => {
           <div v-if="isSocialMenuOpen" class="absolute bottom-full mb-4">
             <div
               class="flex flex-col items-center space-y-5 p-3 rounded-full bg-white/90 backdrop-blur-lg shadow-md border-2 border-black">
-              <a href="https://github.com/KSoham-dev" class="text-black hover:opacity-70 transition-opacity" target="_blank"><i
+              <a href="https://github.com/KSoham-dev" @click="playClickSound" class="text-black hover:opacity-70 transition-opacity" target="_blank"><i
                   class="ri-github-line text-3xl"></i></a>
-              <a href="https://www.linkedin.com/in/ksohamdev/" class="text-black hover:opacity-70 transition-opacity"
+              <a href="https://www.linkedin.com/in/ksohamdev/" @click="playClickSound" class="text-black hover:opacity-70 transition-opacity"
                 target="_blank"><i class="ri-linkedin-line text-3xl"></i></a>
               <a href="https://mail.google.com/mail/u/0/?fs=1&to=sohamkulkarni709@gmail.com&su=Hello&body=I+wanted+to+reach+out!&tf=cm"
-                class="text-black hover:opacity-70 transition-opacity" target="_blank"><i
+                @click="playClickSound" class="text-black hover:opacity-70 transition-opacity" target="_blank"><i
                   class="ri-mail-line text-3xl"></i></a>
-              <button @click="showRAGModal = true; isSocialMenuOpen = false"
+              <button @click="playClickSound(); showRAGModal = true; isSocialMenuOpen = false"
                 class="text-black hover:opacity-70 transition-opacity" title="Ask me anything"><i
                   class="ri-chat-ai-line text-3xl"></i></button>
             </div>
           </div>
         </transition>
 
-        <button @click="toggleSocialMenu"
+        <button @click="playClickSound(); toggleSocialMenu()"
           class="bg-white border-2 border-black rounded-lg text-black font-extra-bold text-sm px-5 py-2.5 text-center transition-all hover:shadow-none hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:ring-2 focus:ring-offset-2 focus:ring-black flex items-center space-x-2">
           <i :class="isSocialMenuOpen ? 'ri-close-line' : 'ri-chat-3-line'" class="text-lg"></i>
           <span>{{ isSocialMenuOpen ? 'Close' : 'Connect' }}</span>
         </button>
       </div>
       <div class="hidden lg:flex items-center space-x-4">
-        <a href="https://github.com/KSoham-dev"
+        <a href="https://github.com/KSoham-dev" @click="playClickSound"
           class="w-14 h-14 bg-white/75 backdrop-blur-lg rounded-full shadow-md border-2 border-black flex items-center justify-center text-black hover:opacity-70 transition-opacity"
           target="_blank">
           <i class="ri-github-line text-3xl"></i>
         </a>
-        <a href="https://www.linkedin.com/in/ksohamdev/"
+        <a href="https://www.linkedin.com/in/ksohamdev/" @click="playClickSound"
           class="w-14 h-14 bg-white/75 backdrop-blur-lg rounded-full shadow-md border-2 border-black flex items-center justify-center text-black hover:opacity-70 transition-opacity"
           target="_blank">
           <i class="ri-linkedin-line text-3xl"></i>
         </a>
-        <a href="mailto:sohamkulkarni709@gmail.com"
+        <a href="mailto:sohamkulkarni709@gmail.com" @click="playClickSound"
           class="w-14 h-14 bg-white/75 backdrop-blur-lg rounded-full shadow-md border-2 border-black flex items-center justify-center text-black hover:opacity-70 transition-opacity"
           target="_blank">
           <i class="ri-mail-line text-3xl"></i>
         </a>
-        <button @click="showRAGModal = true"
+        <button @click="playClickSound(); showRAGModal = true"
           class="w-14 h-14 bg-white/75 backdrop-blur-lg rounded-full shadow-md border-2 border-black flex items-center justify-center text-black hover:opacity-70 transition-opacity"
           title="Ask me anything">
           <i class="ri-chat-ai-line text-3xl"></i>
@@ -393,65 +670,60 @@ onUnmounted(() => {
 
     </div>
 
-    <main>
-      <div id="home" :class="{
-      'content-section min-h-screen px-4 pt-32 pb-4 lg:p-8 flex flex-col justify-center lg:flex-row lg:items-center transition-all duration-1000 ease-out': true,
-      'opacity-100 translate-y-0': visibleSections.home,
-      'opacity-0 translate-y-10': !visibleSections.home && !visibleSections.projects
-      }">
+    <main class="slider-viewport">
+      <div class="slider-track">
+      <div id="home" class="slide bg-white" :class="slideStateClass(0)">
+      <div class="content-section w-full px-4 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
-        
+
+        <!-- Floating Particles -->
+        <div class="particles-container particles-light">
+          <span v-for="(p, i) in homeParticles" :key="i" class="particle" :style="{
+            left: p.left + '%',
+            bottom: p.bottom + '%',
+            animationDelay: p.delay + 's',
+            animationDuration: p.duration + 's'
+          }"></span>
+        </div>
+
         <div class="w-full text-center lg:text-left lg:w-1/2 lg:p-4 relative z-10">
-          <h1 class="text-5xl sm:text-6xl lg:text-8xl font-bold mb-4 leading-tight">
-            <p> Soham </p> Kulkarni
+          <h1 class="text-4xl sm:text-5xl lg:text-7xl font-bold mb-6 leading-tight whitespace-nowrap">
+            Soham Kulkarni
           </h1>
-          <div class="subhead text-lg">
-            <p>A final-year Data Science student at IIT Madras</p>
-            <p>specializing in building intelligent systems,</p>
-            <p>with a firm grounding in mathematics</p>
+          <div class="subhead text-xl">
+            <p>A final-year Data Science student at IIT Madras, currently working as an ML Engineer Intern at Helloramp.ai.</p>
+            <p>I build intelligent systems end-to-end — from feature engineering and model design to shipping and monitoring them in production.</p>
+            <p>With a firm grounding in mathematics and a habit of turning ambiguous problems into clean, reliable solutions, I care as much about the details as I do about the bigger picture.</p>
           </div>
         </div>
         <div class="w-full lg:w-1/2 p-4 flex justify-center items-center relative z-10">
-          <div 
+          <div
             class="reveal-container"
             @mouseenter="startReveal"
             @mouseleave="reverseReveal">
             <!-- Original photo -->
             <img src="/assets/img/profile.jpg" alt="Profile photo" class="reveal-image original-image">
             <!-- Dotted overlay that reveals on hover -->
-            <img 
-              src="/assets/img/dotted_portrait.png" 
-              alt="Dotted portrait" 
+            <img
+              src="/assets/img/dotted_portrait.png"
+              alt="Dotted portrait"
               class="reveal-image dotted-overlay"
               :style="{ clipPath: `inset(0 ${100 - revealProgress}% 0 0)` }">
           </div>
         </div>
       </div>
+      </div>
 
-      <div id="projects" :class="{
-      'content-section min-h-screen bg-black text-white p-4 lg:p-8 flex flex-col lg:flex-row items-center transition-all duration-1000 ease-out': true,
-      'opacity-100 translate-y-0': visibleSections.projects,
-      'opacity-0 translate-y-10': !visibleSections.projects
-      }">
-        <!-- Code Snippet Showcase -->
-        <div class="code-window">
-          <div class="code-window-header">
-            <div class="code-dots">
-              <span class="dot red"></span>
-              <span class="dot yellow"></span>
-              <span class="dot green"></span>
-            </div>
-            <span class="code-title">ml_model.py</span>
-          </div>
-          <pre class="code-content"><code>{{ displayedCode }}</code></pre>
-        </div>
-        
+      <div id="projects" class="slide bg-black text-white" :class="slideStateClass(1)">
+      <div class="content-section w-full px-4 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
-          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Projects</h1>
-          <p>This selection of projects demonstrates</p>
-          <p>my process of deconstructing a problem</p>
-          and building a robust, end-to-end solution.
+          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 leading-tight">Projects</h1>
+          <div class="subhead text-xl">
+            <p>This selection demonstrates my process of deconstructing a real-world problem and building a robust, end-to-end solution around it — not just a model in a notebook.</p>
+            <p>Each one pairs a practical need with the tools suited to it: gradient boosting for churn prediction, an LLM-backed guide for personalized learning, and a task queue for a library system under real concurrency.</p>
+            <p>Browse the cards to see the problem, the stack, and the reasoning behind each choice.</p>
+          </div>
         </div>
         <div class="w-full lg:w-1/2 p-4 relative z-10">
           <div class="flex items-center justify-center">
@@ -459,24 +731,25 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+      </div>
 
-      <div id="skills" :class="{
-      'content-section min-h-screen bg-white p-4 lg:p-8 flex flex-col lg:flex-row items-center transition-all duration-1000 ease-out': true,
-      'opacity-100 translate-y-0': visibleSections.skills,
-      'opacity-0 translate-y-10': !visibleSections.skills
-      }">
+      <div id="skills" class="slide bg-white" :class="slideStateClass(2)">
+      <div class="content-section w-full px-4 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
-        
+
         <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
-          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Skills</h1>
-          <p class="text-xl">A comprehensive toolkit of technologies</p>
-          <p class="text-xl">and frameworks that power my projects.</p>
-          <p class="text-xl mt-4">Hover to explore each skill.</p>
+          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 leading-tight">Skills</h1>
+          <div class="subhead text-xl">
+            <p>Python is home base — TensorFlow, PyTorch, and scikit-learn for modeling, Pandas and NumPy for everything that happens before a model ever sees the data.</p>
+            <p>Apache Spark and PostgreSQL handle the scale that a laptop can't, while Docker and Kubernetes carry a project from a notebook to something that actually runs in production.</p>
+            <p>Git, Linux, and Google Cloud round out the workflow underneath all of it.</p>
+          </div>
+          <p class="text-lg mt-6 opacity-70">Hover a bubble to see what it is.</p>
         </div>
         <div class="w-full lg:w-1/2 p-4 flex justify-center items-center relative z-10">
           <div class="skills-circle-container-large">
-            <div v-for="(skill, index) in skills" :key="skill.name" 
+            <div v-for="(skill, index) in skills" :key="skill.name"
                  :class="['skill-icon-large', { 'blurred': hoveredSkill && hoveredSkill !== skill.name }]"
                  :style="getSkillPosition(index, skills.length)"
                  @mouseenter="hoveredSkill = skill.name"
@@ -489,12 +762,10 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+      </div>
 
-      <div id="journey" :class="{
-      'content-section min-h-screen bg-black text-white p-4 lg:p-8 flex flex-col lg:flex-row items-center transition-all duration-1000 ease-out': true,
-      'opacity-100 translate-y-0': visibleSections.journey,
-      'opacity-0 translate-y-10': !visibleSections.journey
-      }">
+      <div id="journey" class="slide bg-black text-white" :class="slideStateClass(3)">
+      <div class="content-section w-full px-4 lg:px-8 flex flex-col items-center">
         <!-- Data Visualization Background Elements -->
         <svg class="data-viz-background" viewBox="0 0 400 300">
           <!-- Animated bar chart -->
@@ -516,7 +787,7 @@ onUnmounted(() => {
               <animate attributeName="y" from="200" to="50" dur="1s" fill="freeze" begin="0.6s"/>
             </rect>
           </g>
-          
+
           <!-- Animated line graph -->
           <polyline class="line-graph" points="250,180 280,140 310,160 340,100 370,120"
                     stroke-dasharray="200" stroke-dashoffset="200">
@@ -528,17 +799,33 @@ onUnmounted(() => {
           <circle cx="340" cy="100" r="3" class="graph-point" style="animation-delay: 1.5s"/>
           <circle cx="370" cy="120" r="3" class="graph-point" style="animation-delay: 2s"/>
         </svg>
-        
-        <div class="w-full text-center lg:text-left lg:w-1/2 p-4 relative z-10">
-          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Journey</h1>
-          <div class="text-lg">
-            <p>My professional path and</p>
-            <p>academic milestones that</p>
-            <p>define my career.</p>
+
+        <div class="w-full max-w-6xl relative z-10">
+          <div class="text-center mb-8 lg:mb-4">
+            <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Journey</h1>
+            <p class="text-lg">My professional path and academic milestones that define my career.</p>
           </div>
-        </div>
-        <div class="w-full lg:w-1/2 p-4 relative z-10">
-          <div class="timeline-container">
+
+          <!-- Horizontal branching tree (desktop) -->
+          <div class="tree hidden lg:block">
+            <div class="tree-trunk"></div>
+            <div class="tree-nodes">
+              <div v-for="(edu, index) in educationData" :key="edu.id"
+                class="tree-node" :class="index % 2 === 0 ? 'branch-up' : 'branch-down'">
+                <div class="tree-card">
+                  <h3 class="text-base font-bold mb-1">{{ edu.degree }}</h3>
+                  <p class="text-sm font-semibold mb-1">{{ edu.institution }}</p>
+                  <p class="text-xs tree-card-year mb-2">{{ edu.year }}</p>
+                  <p class="text-xs tree-card-desc">{{ edu.description }}</p>
+                </div>
+                <div class="tree-stem"></div>
+                <div class="tree-dot"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Vertical timeline (mobile/tablet) -->
+          <div class="timeline-container lg:hidden">
             <div class="timeline-inner">
               <div class="timeline-item" v-for="edu in educationData" :key="edu.id">
                 <div class="timeline-card">
@@ -552,30 +839,107 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+      </div>
 
-      <!-- RAG Modal Overlay and Container -->
-      <div v-if="showRAGModal" class="fixed inset-0 z-50 flex items-center justify-center">
-        <!-- Backdrop with blur -->
-        <div
-          @click="showRAGModal = false"
-          class="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        ></div>
-        <!-- Modal Content -->
-        <div class="relative bg-white rounded-lg shadow-2xl w-full max-w-2xl h-[90vh] mx-4 flex flex-col z-50">
-          <!-- Close Button -->
-          <button
-            @click="showRAGModal = false"
-            class="absolute top-4 right-4 z-10 text-gray-500 hover:text-black transition-colors"
-          >
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
-          </button>
-          <!-- RAG Chat Component -->
-          <RAGChat :is-modal="true" />
+      <div id="blog" class="slide bg-white" :class="slideStateClass(4)">
+      <div class="content-section w-full px-4 lg:px-8 flex flex-col items-center">
+        <!-- Animated Background Grid -->
+        <div class="grid-background"></div>
+
+        <div class="w-full max-w-6xl relative z-10">
+          <div class="text-center mb-8 lg:mb-10">
+            <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">Blog</h1>
+            <p class="text-xl">Notes on data science, machine learning,</p>
+            <p class="text-xl">and the occasional production war story.</p>
+          </div>
+
+          <div class="blog-row-wrapper">
+            <div class="blog-row">
+              <button v-for="post in blogPosts" :key="post.id" @click="openBlogPost(post)" class="blog-card">
+                <span class="blog-card-tag">{{ post.tag }}</span>
+                <h3 class="blog-card-title">{{ post.title }}</h3>
+                <p class="blog-card-excerpt">{{ post.excerpt }}</p>
+                <div class="blog-card-footer">
+                  <span class="blog-card-meta">{{ post.date }} · {{ post.readTime }}</span>
+                  <span class="blog-card-cta">Read <i class="ri-arrow-right-line"></i></span>
+                </div>
+              </button>
+            </div>
+            <p class="blog-row-hint"><i class="ri-arrow-left-right-line"></i> scroll for more</p>
+          </div>
         </div>
       </div>
+      </div>
+      </div>
+      <!-- /.slider-track -->
     </main>
+
+    <!-- Blog Reader - full page "read mode", same visual design as the card
+         version but filling the screen instead of floating over a backdrop.
+         Rendered as a sibling of <main>, not inside it: <main> has
+         perspective set (for the page-turn 3D effect), which makes it the
+         containing block for any position:fixed descendant and gives it
+         its own stacking context - that was pinning this modal's fixed
+         positioning to <main>'s box and sinking it below the navbar/bottom
+         nav (both fixed z-50 siblings of <main>, so outside that trap). -->
+    <div v-if="showBlogReader && activeBlogPost" class="reader-page">
+      <button @click="closeBlogReader" class="reader-close" aria-label="Close article">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+
+      <div class="reader-scroll" ref="readerScrollEl">
+        <div class="reader-scroll-inner">
+          <span class="reader-tag">{{ activeBlogPost.tag }}</span>
+          <h1 class="reader-title">{{ activeBlogPost.title }}</h1>
+          <p class="reader-meta">{{ activeBlogPost.date }} · {{ activeBlogPost.readTime }}</p>
+
+          <div class="reader-body">
+            <template v-for="(block, idx) in activeBlogPost.body" :key="idx">
+              <h2 v-if="block.type === 'h2'" class="reader-h2">{{ block.text }}</h2>
+              <pre v-else-if="block.type === 'code'" class="reader-code"><code>{{ block.text }}</code></pre>
+              <p v-else class="reader-p">{{ block.text }}</p>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <div class="reader-footer">
+        <button @click="readPrevPost" class="section-nav-arrow" aria-label="Previous article">
+          <i class="ri-arrow-left-line"></i>
+          <span class="hidden sm:inline">Prev</span>
+        </button>
+        <span class="reader-footer-count">{{ activeBlogIndex + 1 }} / {{ blogPosts.length }}</span>
+        <button @click="readNextPost" class="section-nav-arrow section-nav-arrow-next" aria-label="Next article">
+          <span class="hidden sm:inline">Next</span>
+          <i class="ri-arrow-right-line"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- RAG Modal Overlay and Container -->
+    <div v-if="showRAGModal" class="fixed inset-0 z-50 flex items-center justify-center">
+      <!-- Backdrop with blur -->
+      <div
+        @click="showRAGModal = false"
+        class="absolute inset-0 bg-black/40 backdrop-blur-sm"
+      ></div>
+      <!-- Modal Content -->
+      <div class="relative bg-white rounded-lg shadow-2xl w-full max-w-2xl h-[90vh] mx-4 flex flex-col z-50">
+        <!-- Close Button -->
+        <button
+          @click="playClickSound(); showRAGModal = false"
+          class="absolute top-4 right-4 z-10 text-gray-500 hover:text-black transition-colors"
+        >
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+        <!-- RAG Chat Component -->
+        <RAGChat :is-modal="true" />
+      </div>
+    </div>
 
   </div>
 </template>
@@ -584,9 +948,10 @@ onUnmounted(() => {
 /* FONT AND GLOBAL STYLES */
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
 
-html {
-  scroll-behavior: smooth;
-  scroll-padding-top: 7rem;
+html,
+body {
+  overflow: hidden;
+  height: 100%;
 }
 
 body {
@@ -657,11 +1022,20 @@ body {
   }
 }
 
+.subhead p {
+  margin-bottom: 14px;
+  max-width: 40rem;
+}
+
+.subhead p:last-child {
+  margin-bottom: 0;
+}
+
 /* Interactive Reveal Effect */
 .reveal-container {
   position: relative;
-  width: 400px;
-  height: 400px;
+  width: 460px;
+  height: 460px;
   border-radius: 50%;
   overflow: hidden;
   cursor: pointer;
@@ -781,8 +1155,8 @@ body {
 /* Larger skills container for fuller display */
 .skills-circle-container-large {
   position: relative;
-  width: 700px;
-  height: 700px;
+  width: 580px;
+  height: 580px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1010,6 +1384,387 @@ body {
   color: rgba(167, 139, 250, 0.8) !important;
 }
 
+/* Journey Section - horizontal branching tree (desktop). A trunk line
+   runs across the middle; each milestone hangs off it as a stem that
+   branches alternately up and down to a card, like a roadmap/commit
+   graph rather than a plain vertical list. */
+.tree {
+  position: relative;
+  /* Deliberately NOT shrunk responsively (e.g. via vh/clamp): each
+     .tree-card is positioned via a *fixed* pixel stem offset from the
+     trunk (see .tree-node.branch-up/.branch-down below), independent of
+     whatever height this box happens to have. Shrinking this height
+     without also shrinking that fixed offset just makes cards poke
+     outside their own container's box - invisible to any overflow or
+     scroll-fallback detection, since it's silent visual overflow, not
+     real layout overflow. This height is sized to actually contain the
+     stem + a card at its usual size, so if the whole section still
+     doesn't fit a short viewport, .slide's overflow-y:auto can actually
+     detect and scroll to it, instead of it just clipping unreachably.
+  */
+  height: 460px;
+  margin-top: 12px;
+}
+
+.tree-trunk {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 3px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, transparent, #667eea 10%, #764ba2 50%, #667eea 90%, transparent);
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.8), 0 0 40px rgba(118, 75, 162, 0.5);
+}
+
+.tree-nodes {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.tree-node {
+  position: relative;
+  flex: 1;
+}
+
+.tree-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border: 3px solid #000;
+  box-shadow: 0 0 15px rgba(102, 126, 234, 0.9);
+  z-index: 3;
+}
+
+.tree-stem {
+  position: absolute;
+  left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #667eea, #764ba2);
+  z-index: 1;
+}
+
+.tree-node.branch-up .tree-stem {
+  bottom: 50%;
+  height: 72px;
+}
+
+.tree-node.branch-down .tree-stem {
+  top: 50%;
+  height: 72px;
+}
+
+.tree-card {
+  position: absolute;
+  left: 50%;
+  width: 230px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  padding: 18px;
+  border-radius: 14px;
+  border: 2px solid rgba(102, 126, 234, 0.5);
+  color: white;
+  z-index: 2;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.tree-card:hover {
+  transform: translateX(-50%) scale(1.08);
+  border-color: rgba(102, 126, 234, 0.9);
+  box-shadow: 0 12px 48px rgba(102, 126, 234, 0.4), 0 0 40px rgba(118, 75, 162, 0.3);
+}
+
+.tree-node.branch-up .tree-card {
+  bottom: calc(50% + 72px);
+}
+
+.tree-node.branch-down .tree-card {
+  top: calc(50% + 72px);
+}
+
+.tree-card-year {
+  color: rgba(167, 139, 250, 0.9);
+}
+
+.tree-card-desc {
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.45;
+}
+
+@media (min-width: 1280px) {
+  .tree-card {
+    width: 260px;
+    padding: 22px;
+  }
+}
+
+/* Blog Section - a horizontal scroll row rather than a bounded-height
+   grid, so a 5th card never gets hard-clipped mid-content the way a
+   fixed max-height vertical grid would when it doesn't fit the viewport. */
+.blog-row-wrapper {
+  position: relative;
+  margin: 0 -4px;
+  padding: 4px 4px 0;
+  /* Fade the row's edges so it reads as "more to scroll" rather than an
+     abrupt cut - much clearer than a hidden scrollbar alone. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+}
+
+.blog-row {
+  display: flex;
+  gap: 1.5rem;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 8px 24px 16px;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.blog-row::-webkit-scrollbar {
+  display: none;
+}
+
+.blog-row-hint {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #9ca3af;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.blog-card {
+  text-align: left;
+  background: #ffffff;
+  border: 2px solid #000;
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  cursor: pointer;
+  box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 1);
+  transition: all 0.25s ease;
+  flex: 0 0 300px;
+  width: 300px;
+  scroll-snap-align: start;
+}
+
+.blog-card:hover {
+  transform: translate(3px, 3px);
+  box-shadow: 3px 3px 0px 0px rgba(0, 0, 0, 1);
+  background: #fafafa;
+}
+
+.blog-card-tag {
+  display: inline-block;
+  width: fit-content;
+  background: #000;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 9999px;
+}
+
+.blog-card-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #000;
+}
+
+.blog-card-excerpt {
+  font-size: 1rem;
+  color: #4b5563;
+  line-height: 1.5;
+  flex-grow: 1;
+}
+
+.blog-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.blog-card-meta {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.blog-card-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #000;
+}
+
+/* Blog Reader - full-page "read mode": same card's visual language (white
+   background, serif headings, black-bordered pill/code accents) but
+   filling the whole screen instead of floating over a dimmed backdrop. */
+.reader-page {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.reader-close {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 10;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 2px solid #000;
+  border-radius: 50%;
+  color: #000;
+  transition: all 0.2s ease;
+}
+
+.reader-close:hover {
+  transform: rotate(90deg);
+}
+
+.reader-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 88px 24px 32px;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.reader-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.reader-scroll-inner {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.reader-tag {
+  display: inline-block;
+  background: #000;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  margin-bottom: 16px;
+}
+
+.reader-title {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #000;
+  margin-bottom: 10px;
+}
+
+.reader-meta {
+  font-size: 0.95rem;
+  color: #6b7280;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #000;
+}
+
+.reader-body {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  color: #1f2937;
+}
+
+.reader-p {
+  margin-bottom: 20px;
+}
+
+.reader-h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #000;
+  margin: 32px 0 16px;
+}
+
+.reader-code {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border: 2px solid #000;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  overflow-x: auto;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.reader-code code {
+  color: #9cdcfe;
+}
+
+.reader-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 2px solid #000;
+  background: #fafafa;
+}
+
+.reader-footer-count {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+@media (max-width: 768px) {
+  .blog-card {
+    flex-basis: 82vw;
+    width: 82vw;
+  }
+
+  .reader-scroll {
+    padding: 72px 20px 20px;
+  }
+
+  .reader-title {
+    font-size: 1.75rem;
+  }
+
+  .reader-body {
+    font-size: 1.05rem;
+  }
+}
+
 @media (max-width: 640px) {
   .reveal-container {
     width: 280px;
@@ -1139,84 +1894,6 @@ body {
   color: rgba(255, 255, 255, 0.9) !important;
 }
 
-/* Code Window Showcase */
-.code-window {
-  position: absolute;
-  top: 10%;
-  right: 5%;
-  width: 400px;
-  max-width: 42%;
-  background: #1e1e1e;
-  border: 2px solid #000;
-  border-radius: 8px;
-  box-shadow: 8px 8px 0px 0px rgba(0, 0, 0, 1);
-  z-index: 5;
-  opacity: 0.85;
-  transition: opacity 0.3s, transform 0.3s;
-}
-
-.code-window:hover {
-  opacity: 1;
-  transform: translateY(-4px);
-}
-
-.code-window-header {
-  background: #2d2d2d;
-  padding: 12px 16px;
-  border-bottom: 1px solid #000;
-  border-radius: 6px 6px 0 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.code-dots {
-  display: flex;
-  gap: 8px;
-}
-
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 1px solid #000;
-}
-
-.dot.red {
-  background: #ff5f56;
-}
-
-.dot.yellow {
-  background: #ffbd2e;
-}
-
-.dot.green {
-  background: #27c93f;
-}
-
-.code-title {
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
-  font-family: 'Courier New', monospace;
-}
-
-.code-content {
-  padding: 20px;
-  margin: 0;
-  color: #d4d4d4;
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  min-height: 200px;
-  max-height: 300px;
-  overflow: hidden;
-}
-
-.code-content code {
-  color: #9cdcfe;
-}
-
 /* Neural Network Visualization */
 .neural-network {
   position: absolute;
@@ -1296,6 +1973,269 @@ body {
 @keyframes fade-in-point {
   to {
     opacity: 1;
+  }
+}
+
+/* Page-turn transition: sections are stacked (not laid side by side).
+   Next/Previous/dots/nav-links change currentSectionIndex, which is
+   already sitting flat underneath from the start of the transition (see
+   goToSection) - the outgoing section (.slide-flip-out-*) rotates away
+   on a hinge, like a book page, to reveal it. perspective on the
+   viewport is what gives that rotation real 3D depth instead of just
+   looking like a flat horizontal squish. */
+.slider-viewport {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  perspective: 2200px;
+}
+
+.slider-track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  z-index: 1;
+  transform: rotateY(0deg);
+  backface-visibility: hidden;
+  /* Reserve exactly enough space to clear the fixed navbar (top) and the
+     floating Next/Prev bar (bottom); --nav-clearance/--bottom-clearance
+     are measured from the real elements at runtime (see
+     updateSlideClearances) rather than guessed, so this never
+     over-reserves (wasted empty space) or under-reserves (clipped
+     headings) - the fallback values only apply for the first frame
+     before that JS runs. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: var(--nav-clearance, 7.5rem);
+  padding-bottom: var(--bottom-clearance, 9rem);
+  /* display:flex is what makes the .content-section auto-margin trick
+     below actually center it - see that rule's comment. */
+  display: flex;
+  flex-direction: column;
+}
+
+.slide-hidden {
+  display: none;
+}
+
+.slide-flip-out-next,
+.slide-flip-out-prev {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.slide-flip-out-next {
+  transform-origin: left center;
+  animation: page-flip-out-next 0.45s ease-in both;
+}
+
+.slide-flip-out-prev {
+  transform-origin: right center;
+  animation: page-flip-out-prev 0.45s ease-in both;
+}
+
+/* Pure rotation, no opacity/scale involved: the incoming page underneath
+   is always fully opaque and static, so it must only ever become visible
+   through backface-visibility:hidden cutting the outgoing page off past
+   90deg - never through a transparency blend, which (tried first) showed
+   both pages' text double-exposed over each other for the entire time
+   both were partway faded. Flat DOM text (unlike a real page's rasterized
+   surface) still looks skewed/mangled around the ~50-130deg range no
+   matter how the timing curve is shaped - measuring it, that range isn't
+   actually rushed through any faster than the rest despite ease-in's
+   "slow start" reading like it should be. So instead of relying on speed
+   alone to hide it, a blur peaking right as the page is edge-on (50% of
+   the timeline, which is where it measures out to cross 90deg) stands in
+   for real motion blur and masks the compressed-text look directly. */
+@keyframes page-flip-out-next {
+  0% {
+    transform: rotateY(0deg);
+    filter: blur(0);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  50% {
+    filter: blur(7px);
+    box-shadow: 50px 0 90px rgba(0, 0, 0, 0.4);
+  }
+  100% {
+    transform: rotateY(-180deg);
+    filter: blur(0);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+@keyframes page-flip-out-prev {
+  0% {
+    transform: rotateY(0deg);
+    filter: blur(0);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  50% {
+    filter: blur(7px);
+    box-shadow: -50px 0 90px rgba(0, 0, 0, 0.4);
+  }
+  100% {
+    transform: rotateY(180deg);
+    filter: blur(0);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+/* A shadow sweeping over the incoming page as the outgoing one passes
+   over it, fading away - depth polish that (unlike the page-flip-in
+   attempt above) never touches the incoming page's own opacity or
+   content, so it can't reintroduce that double-exposure problem. */
+.slide-flip-in::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.35), transparent 55%);
+  animation: incoming-shadow 0.45s ease-out both;
+}
+
+@keyframes incoming-shadow {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* .slide is a flex column specifically so margin:auto here can center
+   .content-section vertically - auto margins only ever resolve to
+   nonzero in a flex/grid container; in plain block flow they're always 0,
+   which is what silently pinned every section to the top regardless of
+   how much slack space there was. Using margin:auto on the child (this
+   rule) rather than align-items:center on the parent is deliberate too:
+   it's the standard fix for the flexbox bug where an align-items:center
+   child that overflows becomes unreachable by scrolling to its top -
+   auto-margin centering degrades to a normal, fully scrollable 0 instead
+   when content doesn't fit, combined with .slide's overflow-y:auto. */
+.content-section {
+  margin: auto 0;
+}
+
+/* Nav link active state */
+.nav-link {
+  position: relative;
+}
+
+.nav-link-active {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+/* Floating Next / Previous section controls */
+.section-nav-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 48px;
+  min-width: 48px;
+  padding: 0 14px;
+  background: #ffffff;
+  border: 2px solid #000;
+  border-radius: 9999px;
+  color: #000;
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.section-nav-arrow i {
+  font-size: 1.25rem;
+}
+
+.section-nav-arrow:hover:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+}
+
+.section-nav-arrow-next {
+  background: #000;
+  color: #fff;
+  box-shadow: 4px 4px 0px 0px rgba(102, 126, 234, 0.6);
+}
+
+.section-nav-arrow-next:hover:not(:disabled) {
+  box-shadow: 2px 2px 0px 0px rgba(102, 126, 234, 0.6);
+}
+
+.mute-toggle {
+  width: 48px;
+  padding: 0;
+}
+
+.section-nav-arrow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.section-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  border: 2px solid #000;
+  border-radius: 9999px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+}
+
+.section-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid #000;
+  background: #fff;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.section-dot:hover {
+  transform: scale(1.3);
+}
+
+.section-dot.active {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  width: 22px;
+  border-radius: 9999px;
+}
+
+@media (max-width: 640px) {
+  .section-nav-arrow {
+    height: 42px;
+    min-width: 42px;
+    padding: 0 10px;
+  }
+
+  .mute-toggle {
+    width: 42px;
+    padding: 0;
+  }
+
+  .section-dots {
+    padding: 8px 10px;
+    gap: 6px;
   }
 }
 
