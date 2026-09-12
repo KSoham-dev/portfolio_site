@@ -40,27 +40,10 @@ const flipDirection = ref(null); // 'next' | 'prev' | null
 const PAGE_FLIP_MS = 460;
 let flipTimeoutId = null;
 
-// Audio: a continuously looping background track (the uploaded song), plus
-// a short click sound synthesized with the Web Audio API (the same
-// audioContext used for the welcome chime) rather than an audio file -
-// gives a crisp, actual "click" instead of a music clip standing in for one.
-let bgmAudio = null;
-const BGM_VOLUME = 0.14;
-
-const startBgm = () => {
-  if (isMuted.value) return;
-  try {
-    if (!bgmAudio) {
-      bgmAudio = new Audio('/assets/audio/click-sound.mp3');
-      bgmAudio.loop = true;
-      bgmAudio.volume = BGM_VOLUME;
-    }
-    bgmAudio.play().catch(() => {});
-  } catch (e) {
-    console.error('Could not play background music.', e);
-  }
-};
-
+// Audio: short sounds synthesized with the Web Audio API (the same
+// audioContext used for the welcome chime) rather than audio files - a
+// click for navigation/buttons, and a separate texture for the Home
+// photo's hover-reveal.
 const playClickSound = () => {
   if (isMuted.value || !audioContext) return;
   try {
@@ -99,10 +82,7 @@ const toggleMute = () => {
   } catch (e) {
     // ignore persistence failures
   }
-  if (isMuted.value) {
-    if (bgmAudio) bgmAudio.pause();
-  } else {
-    startBgm();
+  if (!isMuted.value) {
     playClickSound(); // confirmation click
   }
 };
@@ -183,7 +163,6 @@ const enterSite = () => {
     audioContext.resume();
   }
   playIntroSound();
-  startBgm();
 
   // Switch from the welcome screen to the main content
   isLoading.value = false;
@@ -275,7 +254,36 @@ const revealProgress = ref(0);
 let animationId = null;
 const revealSpeed = 2; // Percentage per frame (adjust for speed)
 
+// A quick ascending run of short square-wave blips - a "digitizing"
+// texture distinct from the click's single descending sine ping - played
+// once when the pixelated overlay starts revealing on hover.
+const playHoverSound = () => {
+  if (isMuted.value || !audioContext) return;
+  try {
+    if (audioContext.state === 'suspended') audioContext.resume();
+    const now = audioContext.currentTime;
+    const steps = [520, 720, 980, 1300];
+    steps.forEach((freq, i) => {
+      const start = now + i * 0.035;
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.type = 'square';
+      oscillator.frequency.setValueAtTime(freq, start);
+      gainNode.gain.setValueAtTime(0.0001, start);
+      gainNode.gain.exponentialRampToValueAtTime(0.05, start + 0.005);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, start + 0.03);
+      oscillator.start(start);
+      oscillator.stop(start + 0.035);
+    });
+  } catch (e) {
+    console.error('Could not play hover sound.', e);
+  }
+};
+
 const startReveal = () => {
+  playHoverSound();
   const animate = () => {
     if (revealProgress.value < 100) {
       revealProgress.value = Math.min(100, revealProgress.value + revealSpeed);
@@ -372,35 +380,22 @@ const getSkillPosition = (index, total) => {
   };
 };
 
-// Journey data
+// Journey data - oldest first, so the tree (rendered left-to-right in
+// this order) reads chronologically left-to-right, older to newer.
 const educationData = ref([
   {
     id: 0,
-    degree: 'ML Engineer Intern',
-    institution: 'Helloramp.ai',
-    year: 'Nov 2025 - Present',
-    description: 'Working on cutting-edge machine learning models and AI solutions.'
-  },
-  {
-    id: 1,
     degree: 'Bachelor of Science in Data Science',
     institution: 'IIT Madras',
     year: 'Sept 2022 - present',
     description: 'Specializing in Machine Learning, Deep Learning, and Big Data Analytics.'
   },
   {
-    id: 2,
-    degree: 'Higher Secondary Certificate',
-    institution: 'Junior College',
-    year: 'Sept 2020 - June 2022',
-    description: 'Completed pre-university education with focus on Mathematics, Physics, and Computer Science.'
-  },
-  {
-    id: 3,
-    degree: 'Secondary School Certificate',
-    institution: 'High School',
-    year: 'June 2020',
-    description: 'Foundation years building strong analytical and problem-solving skills.'
+    id: 1,
+    degree: 'ML Engineer Intern',
+    institution: 'Helloramp.ai',
+    year: 'Nov 2025 - Present',
+    description: 'Working on cutting-edge machine learning models and AI solutions.'
   }
 ]);
 
@@ -540,7 +535,6 @@ const readPrevPost = () => {
 onUnmounted(() => {
   clearTimeout(messageTimeoutId); // Clean up the timer
   clearTimeout(flipTimeoutId);
-  if (bgmAudio) bgmAudio.pause();
   document.removeEventListener('mousedown', enterSite);
   document.removeEventListener('keydown', enterSite);
   document.removeEventListener('mousedown', handleClickOutside);
@@ -678,7 +672,7 @@ onUnmounted(() => {
 
     <main class="slider-viewport">
       <div class="slider-track">
-      <div id="home" class="slide" :class="slideStateClass(0)">
+      <div id="home" class="slide bg-white" :class="slideStateClass(0)">
       <div class="content-section w-full px-4 lg:px-8 flex flex-col lg:flex-row lg:items-center">
         <!-- Animated Background Grid -->
         <div class="grid-background"></div>
@@ -878,69 +872,74 @@ onUnmounted(() => {
       </div>
       </div>
       <!-- /.slider-track -->
-
-      <!-- Blog Reader Modal -->
-      <div v-if="showBlogReader && activeBlogPost" class="fixed inset-0 z-50 flex items-center justify-center">
-        <div @click="closeBlogReader" class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
-
-        <div class="reader-modal relative z-10">
-          <button @click="closeBlogReader" class="reader-close" aria-label="Close article">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
-          </button>
-
-          <div class="reader-scroll" ref="readerScrollEl">
-            <span class="reader-tag">{{ activeBlogPost.tag }}</span>
-            <h1 class="reader-title">{{ activeBlogPost.title }}</h1>
-            <p class="reader-meta">{{ activeBlogPost.date }} · {{ activeBlogPost.readTime }}</p>
-
-            <div class="reader-body">
-              <template v-for="(block, idx) in activeBlogPost.body" :key="idx">
-                <h2 v-if="block.type === 'h2'" class="reader-h2">{{ block.text }}</h2>
-                <pre v-else-if="block.type === 'code'" class="reader-code"><code>{{ block.text }}</code></pre>
-                <p v-else class="reader-p">{{ block.text }}</p>
-              </template>
-            </div>
-          </div>
-
-          <div class="reader-footer">
-            <button @click="readPrevPost" class="section-nav-arrow" aria-label="Previous article">
-              <i class="ri-arrow-left-line"></i>
-              <span class="hidden sm:inline">Prev</span>
-            </button>
-            <span class="reader-footer-count">{{ activeBlogIndex + 1 }} / {{ blogPosts.length }}</span>
-            <button @click="readNextPost" class="section-nav-arrow section-nav-arrow-next" aria-label="Next article">
-              <span class="hidden sm:inline">Next</span>
-              <i class="ri-arrow-right-line"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- RAG Modal Overlay and Container -->
-      <div v-if="showRAGModal" class="fixed inset-0 z-50 flex items-center justify-center">
-        <!-- Backdrop with blur -->
-        <div
-          @click="showRAGModal = false"
-          class="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        ></div>
-        <!-- Modal Content -->
-        <div class="relative bg-white rounded-lg shadow-2xl w-full max-w-2xl h-[90vh] mx-4 flex flex-col z-50">
-          <!-- Close Button -->
-          <button
-            @click="playClickSound(); showRAGModal = false"
-            class="absolute top-4 right-4 z-10 text-gray-500 hover:text-black transition-colors"
-          >
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
-          </button>
-          <!-- RAG Chat Component -->
-          <RAGChat :is-modal="true" />
-        </div>
-      </div>
     </main>
+
+    <!-- Blog Reader - full page "read mode", same visual design as the card
+         version but filling the screen instead of floating over a backdrop.
+         Rendered as a sibling of <main>, not inside it: <main> has
+         perspective set (for the page-turn 3D effect), which makes it the
+         containing block for any position:fixed descendant and gives it
+         its own stacking context - that was pinning this modal's fixed
+         positioning to <main>'s box and sinking it below the navbar/bottom
+         nav (both fixed z-50 siblings of <main>, so outside that trap). -->
+    <div v-if="showBlogReader && activeBlogPost" class="reader-page">
+      <button @click="closeBlogReader" class="reader-close" aria-label="Close article">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+
+      <div class="reader-scroll" ref="readerScrollEl">
+        <div class="reader-scroll-inner">
+          <span class="reader-tag">{{ activeBlogPost.tag }}</span>
+          <h1 class="reader-title">{{ activeBlogPost.title }}</h1>
+          <p class="reader-meta">{{ activeBlogPost.date }} · {{ activeBlogPost.readTime }}</p>
+
+          <div class="reader-body">
+            <template v-for="(block, idx) in activeBlogPost.body" :key="idx">
+              <h2 v-if="block.type === 'h2'" class="reader-h2">{{ block.text }}</h2>
+              <pre v-else-if="block.type === 'code'" class="reader-code"><code>{{ block.text }}</code></pre>
+              <p v-else class="reader-p">{{ block.text }}</p>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <div class="reader-footer">
+        <button @click="readPrevPost" class="section-nav-arrow" aria-label="Previous article">
+          <i class="ri-arrow-left-line"></i>
+          <span class="hidden sm:inline">Prev</span>
+        </button>
+        <span class="reader-footer-count">{{ activeBlogIndex + 1 }} / {{ blogPosts.length }}</span>
+        <button @click="readNextPost" class="section-nav-arrow section-nav-arrow-next" aria-label="Next article">
+          <span class="hidden sm:inline">Next</span>
+          <i class="ri-arrow-right-line"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- RAG Modal Overlay and Container -->
+    <div v-if="showRAGModal" class="fixed inset-0 z-50 flex items-center justify-center">
+      <!-- Backdrop with blur -->
+      <div
+        @click="showRAGModal = false"
+        class="absolute inset-0 bg-black/40 backdrop-blur-sm"
+      ></div>
+      <!-- Modal Content -->
+      <div class="relative bg-white rounded-lg shadow-2xl w-full max-w-2xl h-[90vh] mx-4 flex flex-col z-50">
+        <!-- Close Button -->
+        <button
+          @click="playClickSound(); showRAGModal = false"
+          class="absolute top-4 right-4 z-10 text-gray-500 hover:text-black transition-colors"
+        >
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+        <!-- RAG Chat Component -->
+        <RAGChat :is-modal="true" />
+      </div>
+    </div>
 
   </div>
 </template>
@@ -1391,8 +1390,20 @@ body {
    graph rather than a plain vertical list. */
 .tree {
   position: relative;
+  /* Deliberately NOT shrunk responsively (e.g. via vh/clamp): each
+     .tree-card is positioned via a *fixed* pixel stem offset from the
+     trunk (see .tree-node.branch-up/.branch-down below), independent of
+     whatever height this box happens to have. Shrinking this height
+     without also shrinking that fixed offset just makes cards poke
+     outside their own container's box - invisible to any overflow or
+     scroll-fallback detection, since it's silent visual overflow, not
+     real layout overflow. This height is sized to actually contain the
+     stem + a card at its usual size, so if the whole section still
+     doesn't fit a short viewport, .slide's overflow-y:auto can actually
+     detect and scroll to it, instead of it just clipping unreachably.
+  */
   height: 460px;
-  margin-top: 20px;
+  margin-top: 12px;
 }
 
 .tree-trunk {
@@ -1515,7 +1526,12 @@ body {
   overflow-x: auto;
   scroll-snap-type: x proximity;
   padding: 8px 24px 16px;
-  scrollbar-width: thin;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.blog-row::-webkit-scrollbar {
+  display: none;
 }
 
 .blog-row-hint {
@@ -1601,15 +1617,14 @@ body {
   color: #000;
 }
 
-/* Blog Reader Modal */
-.reader-modal {
+/* Blog Reader - full-page "read mode": same card's visual language (white
+   background, serif headings, black-bordered pill/code accents) but
+   filling the whole screen instead of floating over a dimmed backdrop. */
+.reader-page {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
   background: #ffffff;
-  border-radius: 16px;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
-  width: 100%;
-  max-width: 720px;
-  max-height: 88vh;
-  margin: 0 16px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1617,11 +1632,11 @@ body {
 
 .reader-close {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: 24px;
+  right: 24px;
   z-index: 10;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1637,8 +1652,20 @@ body {
 }
 
 .reader-scroll {
-  padding: 48px 40px 24px;
+  flex: 1;
   overflow-y: auto;
+  padding: 88px 24px 32px;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.reader-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.reader-scroll-inner {
+  max-width: 720px;
+  margin: 0 auto;
 }
 
 .reader-tag {
@@ -1726,7 +1753,7 @@ body {
   }
 
   .reader-scroll {
-    padding: 40px 24px 20px;
+    padding: 72px 20px 20px;
   }
 
   .reader-title {
@@ -1977,28 +2004,24 @@ body {
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   z-index: 1;
   transform: rotateY(0deg);
   backface-visibility: hidden;
   /* Reserve exactly enough space to clear the fixed navbar (top) and the
-     floating Next/Prev bar (bottom), so content centers between them
-     with no scroll. --nav-clearance/--bottom-clearance are measured from
-     the real elements at runtime (see updateSlideClearances) rather than
-     guessed, so this never over-reserves (wasted empty space) or
-     under-reserves (clipped headings) - the fallback values only apply
-     for the first frame before that JS runs. Below lg, two-column
-     sections stack their columns instead of sitting side by side, so
-     content can still run taller than the viewport; allow that one axis
-     to scroll there rather than shrink everything to force a fit.
-     Desktop has no such case (every section fits its clearance) so
-     stays fully non-scrolling. */
+     floating Next/Prev bar (bottom); --nav-clearance/--bottom-clearance
+     are measured from the real elements at runtime (see
+     updateSlideClearances) rather than guessed, so this never
+     over-reserves (wasted empty space) or under-reserves (clipped
+     headings) - the fallback values only apply for the first frame
+     before that JS runs. */
   overflow-y: auto;
   overflow-x: hidden;
   padding-top: var(--nav-clearance, 7.5rem);
   padding-bottom: var(--bottom-clearance, 9rem);
+  /* display:flex is what makes the .content-section auto-margin trick
+     below actually center it - see that rule's comment. */
+  display: flex;
+  flex-direction: column;
 }
 
 .slide-hidden {
@@ -2026,21 +2049,27 @@ body {
    through backface-visibility:hidden cutting the outgoing page off past
    90deg - never through a transparency blend, which (tried first) showed
    both pages' text double-exposed over each other for the entire time
-   both were partway faded. ease-in (slow start, fast finish) means it
-   lingers fully readable near 0deg, then swings quickly through the
-   ~40-90deg range where flat DOM text looks skewed/mangled rather than
-   like a solid turning page - a real page-turn flips a rasterized image,
-   immune to that; live text isn't, so the fix is to not linger there. */
+   both were partway faded. Flat DOM text (unlike a real page's rasterized
+   surface) still looks skewed/mangled around the ~50-130deg range no
+   matter how the timing curve is shaped - measuring it, that range isn't
+   actually rushed through any faster than the rest despite ease-in's
+   "slow start" reading like it should be. So instead of relying on speed
+   alone to hide it, a blur peaking right as the page is edge-on (50% of
+   the timeline, which is where it measures out to cross 90deg) stands in
+   for real motion blur and masks the compressed-text look directly. */
 @keyframes page-flip-out-next {
   0% {
     transform: rotateY(0deg);
+    filter: blur(0);
     box-shadow: 0 0 0 rgba(0, 0, 0, 0);
   }
-  60% {
+  50% {
+    filter: blur(7px);
     box-shadow: 50px 0 90px rgba(0, 0, 0, 0.4);
   }
   100% {
     transform: rotateY(-180deg);
+    filter: blur(0);
     box-shadow: 0 0 0 rgba(0, 0, 0, 0);
   }
 }
@@ -2048,13 +2077,16 @@ body {
 @keyframes page-flip-out-prev {
   0% {
     transform: rotateY(0deg);
+    filter: blur(0);
     box-shadow: 0 0 0 rgba(0, 0, 0, 0);
   }
-  60% {
+  50% {
+    filter: blur(7px);
     box-shadow: -50px 0 90px rgba(0, 0, 0, 0.4);
   }
   100% {
     transform: rotateY(180deg);
+    filter: blur(0);
     box-shadow: 0 0 0 rgba(0, 0, 0, 0);
   }
 }
@@ -2082,27 +2114,18 @@ body {
   }
 }
 
-@media (max-width: 1023px) {
-  /* :not(.slide-hidden) isn't just belt-and-suspenders here: .slide-hidden
-     and this rule have equal specificity (one class each), and this rule
-     comes later in the stylesheet - without the :not(), it would win and
-     force display:block on hidden slides too, undoing the hide (every
-     section stacking visibly on top of each other; whichever is last in
-     the DOM paints on top of the rest, regardless of which is actually
-     "current"). */
-  .slide:not(.slide-hidden) {
-    /* Plain block flow instead of flex-centering below lg: centering an
-       overflowing flex child can leave its top edge unreachable by
-       scroll in some browsers, whereas block flow with padding-top for
-       navbar clearance scrolls normally either way. */
-    display: block;
-  }
-}
-
-@media (min-width: 1024px) {
-  .slide {
-    overflow: hidden;
-  }
+/* .slide is a flex column specifically so margin:auto here can center
+   .content-section vertically - auto margins only ever resolve to
+   nonzero in a flex/grid container; in plain block flow they're always 0,
+   which is what silently pinned every section to the top regardless of
+   how much slack space there was. Using margin:auto on the child (this
+   rule) rather than align-items:center on the parent is deliberate too:
+   it's the standard fix for the flexbox bug where an align-items:center
+   child that overflows becomes unreachable by scrolling to its top -
+   auto-margin centering degrades to a normal, fully scrollable 0 instead
+   when content doesn't fit, combined with .slide's overflow-y:auto. */
+.content-section {
+  margin: auto 0;
 }
 
 /* Nav link active state */
