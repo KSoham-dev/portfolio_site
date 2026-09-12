@@ -32,9 +32,30 @@ let messageTimeoutId = null; // To hold the ID of our 4-second timeout
 // keep in sync with it.
 const currentSectionIndex = ref(0);
 const isTransitioning = ref(false);
-// Must match .slider-track's CSS transition-duration.
-const SLIDE_TRANSITION_MS = 600;
-let slideTransitionTimeoutId = null;
+
+// Mosaic transition: a grid of tiles scales in (covering the screen) in a
+// diagonal wave, the section swaps position instantly while fully covered,
+// then the same wave scales the tiles back out to reveal it. Two explicit
+// phases (rather than one continuous per-tile keyframe) guarantee a real
+// "fully covered" instant to swap behind, regardless of the stagger - with
+// one keyframe alone, by the time the last tile finishes covering the
+// first ones would already be uncovering again.
+const MOSAIC_ROWS = 5;
+const MOSAIC_COLS = 9;
+const MOSAIC_STAGGER_MS = 18;
+const MOSAIC_TILE_DURATION_MS = 340;
+const MOSAIC_PHASE_MS = (MOSAIC_ROWS - 1 + MOSAIC_COLS - 1) * MOSAIC_STAGGER_MS + MOSAIC_TILE_DURATION_MS;
+
+const mosaicTiles = [];
+for (let r = 0; r < MOSAIC_ROWS; r++) {
+  for (let c = 0; c < MOSAIC_COLS; c++) {
+    mosaicTiles.push({ delay: (r + c) * MOSAIC_STAGGER_MS, alt: (r + c) % 2 === 0 });
+  }
+}
+
+const mosaicPhase = ref('idle'); // 'idle' | 'covering' | 'revealing'
+let mosaicCoverTimeoutId = null;
+let mosaicRevealTimeoutId = null;
 
 // Audio: a continuously looping background track (the uploaded song), plus
 // a short click sound synthesized with the Web Audio API (the same
@@ -104,20 +125,29 @@ const toggleMute = () => {
 };
 
 const goToSection = (index) => {
+  if (isTransitioning.value) return;
   const total = sectionIds.length;
   const newIndex = ((index % total) + total) % total;
   if (newIndex === currentSectionIndex.value) return;
 
   playClickSound();
-  currentSectionIndex.value = newIndex;
-
-  // Briefly disable the nav controls while the slide animates, so a rapid
-  // double-click doesn't queue up a disorienting jump.
   isTransitioning.value = true;
-  clearTimeout(slideTransitionTimeoutId);
-  slideTransitionTimeoutId = setTimeout(() => {
-    isTransitioning.value = false;
-  }, SLIDE_TRANSITION_MS);
+  mosaicPhase.value = 'covering';
+
+  clearTimeout(mosaicCoverTimeoutId);
+  clearTimeout(mosaicRevealTimeoutId);
+
+  mosaicCoverTimeoutId = setTimeout(() => {
+    // Fully covered by tiles now - jump the section position where it's
+    // invisible, then start the reveal wave.
+    currentSectionIndex.value = newIndex;
+    mosaicPhase.value = 'revealing';
+
+    mosaicRevealTimeoutId = setTimeout(() => {
+      mosaicPhase.value = 'idle';
+      isTransitioning.value = false;
+    }, MOSAIC_PHASE_MS);
+  }, MOSAIC_PHASE_MS);
 };
 
 const nextSection = () => goToSection(currentSectionIndex.value + 1);
@@ -509,7 +539,8 @@ const readPrevPost = () => {
 
 onUnmounted(() => {
   clearTimeout(messageTimeoutId); // Clean up the timer
-  clearTimeout(slideTransitionTimeoutId);
+  clearTimeout(mosaicCoverTimeoutId);
+  clearTimeout(mosaicRevealTimeoutId);
   if (bgmAudio) bgmAudio.pause();
   document.removeEventListener('mousedown', enterSite);
   document.removeEventListener('keydown', enterSite);
@@ -564,6 +595,14 @@ onUnmounted(() => {
           </a>
         </div>
       </div>
+    </div>
+
+    <!-- Mosaic transition overlay: a grid of tiles scales in to cover the
+         screen in a diagonal wave, the section swaps underneath, then the
+         same wave scales the tiles back out to reveal it. -->
+    <div class="mosaic-overlay" :class="mosaicPhase">
+      <span v-for="(tile, i) in mosaicTiles" :key="i" class="mosaic-tile" :class="{ alt: tile.alt }"
+        :style="{ animationDelay: tile.delay + 'ms' }"></span>
     </div>
 
     <!-- Floating Next / Previous section navigation -->
@@ -1933,8 +1972,55 @@ body {
 .slider-track {
   display: flex;
   height: 100%;
-  transition: transform 0.6s cubic-bezier(0.65, 0, 0.35, 1);
-  will-change: transform;
+  /* No transition here - the mosaic overlay (see .mosaic-overlay below)
+     fully covers the screen before this jumps position and clears after,
+     so the jump itself is instant and invisible. */
+}
+
+/* Mosaic transition overlay */
+.mosaic-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  grid-template-rows: repeat(5, 1fr);
+  pointer-events: none;
+}
+
+.mosaic-tile {
+  transform: scale(0);
+  background: linear-gradient(135deg, #05050a 0%, #1a1a2e 100%);
+}
+
+.mosaic-tile.alt {
+  background: linear-gradient(135deg, #302b63 0%, #667eea 100%);
+}
+
+.mosaic-overlay.covering .mosaic-tile {
+  animation: mosaic-tile-in 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.mosaic-overlay.revealing .mosaic-tile {
+  animation: mosaic-tile-out 0.34s cubic-bezier(0.36, 0, 0.66, 1) both;
+}
+
+@keyframes mosaic-tile-in {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1.02);
+  }
+}
+
+@keyframes mosaic-tile-out {
+  from {
+    transform: scale(1.02);
+  }
+  to {
+    transform: scale(0);
+  }
 }
 
 .slide {
