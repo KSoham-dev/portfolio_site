@@ -380,22 +380,34 @@ const getSkillPosition = (index, total) => {
   };
 };
 
-// Journey data - oldest first, so the tree (rendered left-to-right in
-// this order) reads chronologically left-to-right, older to newer.
+// Journey data - oldest first, so the milestone track (rendered
+// left-to-right on desktop, top-to-bottom on mobile) reads
+// chronologically, older to newer.
 const educationData = ref([
   {
     id: 0,
-    degree: 'Bachelor of Science in Data Science',
+    icon: 'ri-graduation-cap-line',
+    degree: 'BS in Data Science and Applications',
     institution: 'IIT Madras',
-    year: 'Sept 2022 - present',
-    description: 'Specializing in Machine Learning, Deep Learning, and Big Data Analytics.'
+    year: 'Sept 2022 - Sept 2026',
+    description: 'Built the statistical and machine learning foundation for everything since - coursework spanning deep learning, big data systems, and applied statistics, alongside projects that turned theory into shipped code.'
   },
   {
     id: 1,
+    icon: 'ri-terminal-box-line',
     degree: 'ML Engineer Intern',
     institution: 'Helloramp.ai',
-    year: 'Nov 2025 - Present',
-    description: 'Working on cutting-edge machine learning models and AI solutions.'
+    year: 'Nov 2025 - May 2026',
+    description: 'Joined to build and evaluate machine learning models for production use - data pipelines, model experimentation, and the handoff from notebook to service.'
+  },
+  {
+    id: 2,
+    icon: 'ri-cpu-line',
+    degree: 'AI/ML Engineer',
+    institution: 'Helloramp.ai',
+    year: 'May 2026 - Present',
+    description: 'Converted into a full-time role, now owning models end-to-end - architecture, training, deployment, and monitoring in production.',
+    current: true
   }
 ]);
 
@@ -692,7 +704,7 @@ onUnmounted(() => {
             Soham Kulkarni
           </h1>
           <div class="subhead text-xl">
-            <p>A final-year Data Science student at IIT Madras, currently working as an ML Engineer Intern at Helloramp.ai.</p>
+            <p>A Data Science graduate from IIT Madras, currently working as an AI/ML Engineer at Helloramp.ai.</p>
             <p>I build intelligent systems end-to-end — from feature engineering and model design to shipping and monitoring them in production.</p>
             <p>With a firm grounding in mathematics and a habit of turning ambiguous problems into clean, reliable solutions, I care as much about the details as I do about the bigger picture.</p>
           </div>
@@ -806,33 +818,22 @@ onUnmounted(() => {
             <p class="text-lg">My professional path and academic milestones that define my career.</p>
           </div>
 
-          <!-- Horizontal branching tree (desktop) -->
-          <div class="tree hidden lg:block">
-            <div class="tree-trunk"></div>
-            <div class="tree-nodes">
-              <div v-for="(edu, index) in educationData" :key="edu.id"
-                class="tree-node" :class="index % 2 === 0 ? 'branch-up' : 'branch-down'">
-                <div class="tree-card">
-                  <h3 class="text-base font-bold mb-1">{{ edu.degree }}</h3>
-                  <p class="text-sm font-semibold mb-1">{{ edu.institution }}</p>
-                  <p class="text-xs tree-card-year mb-2">{{ edu.year }}</p>
-                  <p class="text-xs tree-card-desc">{{ edu.description }}</p>
+          <!-- Milestone track: a glowing connector strung through icon
+               nodes, one per milestone, each with a floating card - a
+               single responsive layout (row on desktop, column on
+               mobile) rather than two separate tree/timeline builds. -->
+          <div class="milestones">
+            <div class="milestones-track">
+              <div class="milestone" v-for="edu in educationData" :key="edu.id">
+                <div class="milestone-node" :class="{ 'milestone-node-current': edu.current }">
+                  <i :class="edu.icon"></i>
                 </div>
-                <div class="tree-stem"></div>
-                <div class="tree-dot"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Vertical timeline (mobile/tablet) -->
-          <div class="timeline-container lg:hidden">
-            <div class="timeline-inner">
-              <div class="timeline-item" v-for="edu in educationData" :key="edu.id">
-                <div class="timeline-card">
-                  <h3 class="text-xl font-bold mb-2">{{ edu.degree }}</h3>
-                  <p class="text-lg font-semibold mb-1">{{ edu.institution }}</p>
-                  <p class="text-sm text-gray-400 mb-3">{{ edu.year }}</p>
-                  <p class="text-sm">{{ edu.description }}</p>
+                <div class="milestone-card">
+                  <span class="milestone-current-badge" v-if="edu.current">Current</span>
+                  <span class="milestone-date">{{ edu.year }}</span>
+                  <h3 class="milestone-role">{{ edu.degree }}</h3>
+                  <p class="milestone-org">{{ edu.institution }}</p>
+                  <p class="milestone-desc">{{ edu.description }}</p>
                 </div>
               </div>
             </div>
@@ -1263,247 +1264,203 @@ body {
   }
 }
 
-/* Education Timeline Styles - Futuristic Design */
-/* Education Timeline Styles - Futuristic Design */
-.timeline-container {
-  max-height: 600px;
-  overflow-y: auto;
-  padding: 20px;
+/* Journey Section - a milestone track: a glowing connector strung
+   through icon nodes (one per milestone), each with a floating card
+   hanging off it. Node size is fixed (68px), so the connector's
+   position is anchored to that constant rather than to any measured or
+   responsively-shrunk container height - the exact bug class (fixed
+   pixel offsets escaping a container whose size changes) that broke the
+   old branching-tree layout can't happen here. */
+.milestones {
+  width: 100%;
+  margin-top: 28px;
+}
+
+.milestones-track {
   position: relative;
-  margin-top: 60px;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
 }
 
-.timeline-container::-webkit-scrollbar {
-  display: none;
-}
-
-.timeline-inner {
-  position: relative;
-  padding-top: 10px;
-  padding-bottom: 10px;
-}
-
-/* Center line with glow effect */
-.timeline-inner::before {
+.milestones-track::before {
   content: '';
   position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: linear-gradient(180deg, 
-    transparent 0%,
-    #667eea 10%,
-    #764ba2 50%,
-    #667eea 90%,
-    transparent 100%
-  );
-  transform: translateX(-50%);
-  box-shadow: 0 0 20px rgba(102, 126, 234, 0.8),
-              0 0 40px rgba(118, 75, 162, 0.6);
-  animation: pulse-line 3s ease-in-out infinite;
+  top: 34px;
+  left: 34px;
+  right: 34px;
+  height: 3px;
+  background: linear-gradient(90deg, #667eea, #764ba2, #667eea, #764ba2);
+  background-size: 200% 100%;
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.7), 0 0 40px rgba(118, 75, 162, 0.5);
+  animation: connector-flow 5s linear infinite;
+  z-index: 0;
 }
 
-@keyframes pulse-line {
+@keyframes connector-flow {
+  0% { background-position: 0% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.milestone {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  z-index: 1;
+}
+
+.milestone-node {
+  flex-shrink: 0;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border: 3px solid #000;
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.9);
+  color: #fff;
+  font-size: 1.6rem;
+  margin-bottom: 20px;
+}
+
+.milestone-node-current {
+  animation: node-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes node-pulse {
   0%, 100% {
-    box-shadow: 0 0 20px rgba(102, 126, 234, 0.8),
-                0 0 40px rgba(118, 75, 162, 0.6);
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.9), 0 0 0 0 rgba(118, 75, 162, 0.45);
   }
   50% {
-    box-shadow: 0 0 30px rgba(102, 126, 234, 1),
-                0 0 60px rgba(118, 75, 162, 0.8);
+    box-shadow: 0 0 30px rgba(102, 126, 234, 1), 0 0 0 12px rgba(118, 75, 162, 0);
   }
 }
 
-.timeline-item {
+.milestone-card {
   position: relative;
-  margin-bottom: 60px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.timeline-item:last-child {
-  margin-bottom: 0;
-}
-
-.timeline-card {
+  width: 100%;
+  max-width: 280px;
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(20px);
-  padding: 28px;
-  border-radius: 16px;
   border: 2px solid rgba(102, 126, 234, 0.5);
-  color: white;
-  max-width: 400px;
-  position: relative;
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-.timeline-card::before {
-  content: '';
-  position: absolute;
-  inset: -2px;
   border-radius: 16px;
-  padding: 2px;
-  background: linear-gradient(135deg, #667eea, #764ba2, #667eea);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0;
-  transition: opacity 0.4s ease;
+  padding: 22px;
+  color: white;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-.timeline-card:hover {
-  transform: scale(1.05);
-  border-color: rgba(102, 126, 234, 0.8);
-  box-shadow: 0 12px 48px rgba(102, 126, 234, 0.4),
-              0 0 40px rgba(118, 75, 162, 0.3),
-              inset 0 1px 0 rgba(255, 255, 255, 0.2);
+.milestone-card:hover {
+  transform: translateY(-6px) scale(1.03);
+  border-color: rgba(102, 126, 234, 0.9);
+  box-shadow: 0 16px 48px rgba(102, 126, 234, 0.4), 0 0 40px rgba(118, 75, 162, 0.3);
 }
 
-.timeline-card:hover::before {
-  opacity: 1;
+.milestone-current-badge {
+  position: absolute;
+  top: -14px;
+  right: 16px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 2px solid #000;
 }
 
-.timeline-card h3 {
+.milestone-date {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(167, 139, 250, 0.9);
+  margin-bottom: 10px;
+}
+
+.milestone-role {
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 4px;
   background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.timeline-card p {
+.milestone-org {
+  font-size: 0.95rem;
+  font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 10px;
 }
 
-.timeline-card .text-gray-400 {
-  color: rgba(167, 139, 250, 0.8) !important;
-}
-
-/* Journey Section - horizontal branching tree (desktop). A trunk line
-   runs across the middle; each milestone hangs off it as a stem that
-   branches alternately up and down to a card, like a roadmap/commit
-   graph rather than a plain vertical list. */
-.tree {
-  position: relative;
-  /* Deliberately NOT shrunk responsively (e.g. via vh/clamp): each
-     .tree-card is positioned via a *fixed* pixel stem offset from the
-     trunk (see .tree-node.branch-up/.branch-down below), independent of
-     whatever height this box happens to have. Shrinking this height
-     without also shrinking that fixed offset just makes cards poke
-     outside their own container's box - invisible to any overflow or
-     scroll-fallback detection, since it's silent visual overflow, not
-     real layout overflow. This height is sized to actually contain the
-     stem + a card at its usual size, so if the whole section still
-     doesn't fit a short viewport, .slide's overflow-y:auto can actually
-     detect and scroll to it, instead of it just clipping unreachably.
-  */
-  height: 460px;
-  margin-top: 12px;
-}
-
-.tree-trunk {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 3px;
-  transform: translateY(-50%);
-  background: linear-gradient(90deg, transparent, #667eea 10%, #764ba2 50%, #667eea 90%, transparent);
-  box-shadow: 0 0 20px rgba(102, 126, 234, 0.8), 0 0 40px rgba(118, 75, 162, 0.5);
-}
-
-.tree-nodes {
-  position: absolute;
-  inset: 0;
-  display: flex;
-}
-
-.tree-node {
-  position: relative;
-  flex: 1;
-}
-
-.tree-dot {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  border: 3px solid #000;
-  box-shadow: 0 0 15px rgba(102, 126, 234, 0.9);
-  z-index: 3;
-}
-
-.tree-stem {
-  position: absolute;
-  left: 50%;
-  width: 3px;
-  transform: translateX(-50%);
-  background: linear-gradient(180deg, #667eea, #764ba2);
-  z-index: 1;
-}
-
-.tree-node.branch-up .tree-stem {
-  bottom: 50%;
-  height: 72px;
-}
-
-.tree-node.branch-down .tree-stem {
-  top: 50%;
-  height: 72px;
-}
-
-.tree-card {
-  position: absolute;
-  left: 50%;
-  width: 230px;
-  transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(20px);
-  padding: 18px;
-  border-radius: 14px;
-  border: 2px solid rgba(102, 126, 234, 0.5);
-  color: white;
-  z-index: 2;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-.tree-card:hover {
-  transform: translateX(-50%) scale(1.08);
-  border-color: rgba(102, 126, 234, 0.9);
-  box-shadow: 0 12px 48px rgba(102, 126, 234, 0.4), 0 0 40px rgba(118, 75, 162, 0.3);
-}
-
-.tree-node.branch-up .tree-card {
-  bottom: calc(50% + 72px);
-}
-
-.tree-node.branch-down .tree-card {
-  top: calc(50% + 72px);
-}
-
-.tree-card-year {
-  color: rgba(167, 139, 250, 0.9);
-}
-
-.tree-card-desc {
+.milestone-desc {
+  font-size: 0.85rem;
+  line-height: 1.5;
   color: rgba(255, 255, 255, 0.75);
-  line-height: 1.45;
 }
 
-@media (min-width: 1280px) {
-  .tree-card {
-    width: 260px;
-    padding: 22px;
+@media (max-width: 1023px) {
+  .milestones-track {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 32px;
+  }
+
+  .milestones-track::before {
+    top: 34px;
+    bottom: 34px;
+    left: 34px;
+    right: auto;
+    width: 3px;
+    height: auto;
+    background: linear-gradient(180deg, #667eea, #764ba2, #667eea, #764ba2);
+    background-size: 100% 200%;
+    animation: connector-flow-vertical 5s linear infinite;
+  }
+
+  .milestone {
+    flex-direction: row;
+    align-items: flex-start;
+    text-align: left;
+    gap: 20px;
+  }
+
+  .milestone-node {
+    margin-bottom: 0;
+  }
+
+  .milestone-card {
+    max-width: none;
+  }
+}
+
+@keyframes connector-flow-vertical {
+  0% { background-position: 0 0%; }
+  100% { background-position: 0 -200%; }
+}
+
+@media (max-width: 640px) {
+  .milestone-node {
+    width: 56px;
+    height: 56px;
+    font-size: 1.3rem;
+  }
+
+  .milestones-track::before {
+    left: 28px;
+  }
+
+  .milestone-card {
+    padding: 18px;
   }
 }
 
@@ -1791,11 +1748,6 @@ body {
   .skill-icon-img-large {
     width: 2rem !important;
     height: 2rem !important;
-  }
-  
-  .timeline-card {
-    max-width: 280px;
-    padding: 20px;
   }
 }
 
