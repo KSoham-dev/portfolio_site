@@ -411,6 +411,19 @@ const educationData = ref([
   }
 ]);
 
+// Desktop-only "winding road" layout for Journey (see .journey-road):
+// each stop's position and its accent color, one entry per
+// educationData index, expressed as percentages of the aspect-ratio-
+// locked .journey-road box so they stay correctly threaded onto the
+// SVG road path at any viewport width.
+const roadStops = [
+  { x: 11.7, y: 86.4 },
+  { x: 50, y: 52.3 },
+  { x: 88.3, y: 20.5 }
+];
+const roadAccents = ['#4ade80', '#60a5fa', '#a78bfa'];
+const roadStopStyle = (i) => ({ left: `${roadStops[i].x}%`, top: `${roadStops[i].y}%` });
+
 // Blog data
 const blogPosts = ref([
   {
@@ -818,11 +831,38 @@ onUnmounted(() => {
             <p class="text-lg">My professional path and academic milestones that define my career.</p>
           </div>
 
-          <!-- Milestone track: a glowing connector strung through icon
-               nodes, one per milestone, each with a floating card - a
-               single responsive layout (row on desktop, column on
-               mobile) rather than two separate tree/timeline builds. -->
-          <div class="milestones">
+          <!-- Desktop (>=1024px): a winding road map, one stop per
+               milestone along a glowing rising path. -->
+          <div class="journey-road hidden lg:block">
+            <svg class="road-svg" viewBox="0 0 1200 440">
+              <defs>
+                <linearGradient id="journeyRoadGradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#4ade80" />
+                  <stop offset="50%" stop-color="#667eea" />
+                  <stop offset="100%" stop-color="#a78bfa" />
+                </linearGradient>
+              </defs>
+              <path class="road-path"
+                d="M140,380 C380,380 360,230 600,230 C840,230 820,90 1060,90" />
+            </svg>
+            <div class="road-stop" v-for="(edu, i) in educationData" :key="edu.id" :style="roadStopStyle(i)">
+              <div class="road-label" :style="{ '--accent': roadAccents[i] }">
+                <span class="road-current-badge" v-if="edu.current">Current</span>
+                <span class="road-label-date">{{ edu.year }}</span>
+                <h3 class="road-label-title">{{ edu.degree }}</h3>
+                <p class="road-label-org">{{ edu.institution }}</p>
+                <p class="road-label-desc">{{ edu.description }}</p>
+              </div>
+              <div class="road-node" :class="{ 'milestone-node-current': edu.current }">
+                <i :class="edu.icon"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mobile/tablet (<1024px): a vertical milestone track - a
+               glowing connector strung through icon nodes, each with a
+               card beside it. -->
+          <div class="milestones lg:hidden">
             <div class="milestones-track">
               <div class="milestone" v-for="edu in educationData" :key="edu.id">
                 <div class="milestone-node" :class="{ 'milestone-node-current': edu.current }">
@@ -1264,13 +1304,14 @@ body {
   }
 }
 
-/* Journey Section - a milestone track: a glowing connector strung
-   through icon nodes (one per milestone), each with a floating card
-   hanging off it. Node size is fixed (68px), so the connector's
-   position is anchored to that constant rather than to any measured or
-   responsively-shrunk container height - the exact bug class (fixed
-   pixel offsets escaping a container whose size changes) that broke the
-   old branching-tree layout can't happen here. */
+/* Journey Section, mobile/tablet (<1024px) - a vertical milestone track:
+   a glowing connector strung through icon nodes, each with a card beside
+   it. Node size is fixed (68px), so the connector's position is anchored
+   to that constant rather than a measured or responsively-shrunk
+   container height - avoids the fixed-offset-escaping-its-container bug
+   class the old branching-tree layout had. Desktop uses the winding
+   .journey-road component instead (below), which suits a wide viewport
+   far better than a column ever could. */
 .milestones {
   width: 100%;
   margin-top: 28px;
@@ -1279,36 +1320,35 @@ body {
 .milestones-track {
   position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: 24px;
+  flex-direction: column;
+  gap: 32px;
 }
 
 .milestones-track::before {
   content: '';
   position: absolute;
   top: 34px;
+  bottom: 34px;
   left: 34px;
-  right: 34px;
-  height: 3px;
-  background: linear-gradient(90deg, #667eea, #764ba2, #667eea, #764ba2);
-  background-size: 200% 100%;
+  width: 3px;
+  background: linear-gradient(180deg, #667eea, #764ba2, #667eea, #764ba2);
+  background-size: 100% 200%;
   box-shadow: 0 0 20px rgba(102, 126, 234, 0.7), 0 0 40px rgba(118, 75, 162, 0.5);
-  animation: connector-flow 5s linear infinite;
+  animation: connector-flow-vertical 5s linear infinite;
   z-index: 0;
 }
 
-@keyframes connector-flow {
-  0% { background-position: 0% 0; }
-  100% { background-position: -200% 0; }
+@keyframes connector-flow-vertical {
+  0% { background-position: 0 0%; }
+  100% { background-position: 0 -200%; }
 }
 
 .milestone {
   position: relative;
-  flex: 1;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
+  align-items: flex-start;
+  text-align: left;
+  gap: 20px;
   z-index: 1;
 }
 
@@ -1325,7 +1365,6 @@ body {
   box-shadow: 0 0 20px rgba(102, 126, 234, 0.9);
   color: #fff;
   font-size: 1.6rem;
-  margin-bottom: 20px;
 }
 
 .milestone-node-current {
@@ -1344,7 +1383,6 @@ body {
 .milestone-card {
   position: relative;
   width: 100%;
-  max-width: 280px;
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(20px);
   border: 2px solid rgba(102, 126, 234, 0.5);
@@ -1408,46 +1446,6 @@ body {
   color: rgba(255, 255, 255, 0.75);
 }
 
-@media (max-width: 1023px) {
-  .milestones-track {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 32px;
-  }
-
-  .milestones-track::before {
-    top: 34px;
-    bottom: 34px;
-    left: 34px;
-    right: auto;
-    width: 3px;
-    height: auto;
-    background: linear-gradient(180deg, #667eea, #764ba2, #667eea, #764ba2);
-    background-size: 100% 200%;
-    animation: connector-flow-vertical 5s linear infinite;
-  }
-
-  .milestone {
-    flex-direction: row;
-    align-items: flex-start;
-    text-align: left;
-    gap: 20px;
-  }
-
-  .milestone-node {
-    margin-bottom: 0;
-  }
-
-  .milestone-card {
-    max-width: none;
-  }
-}
-
-@keyframes connector-flow-vertical {
-  0% { background-position: 0 0%; }
-  100% { background-position: 0 -200%; }
-}
-
 @media (max-width: 640px) {
   .milestone-node {
     width: 56px;
@@ -1462,6 +1460,135 @@ body {
   .milestone-card {
     padding: 18px;
   }
+}
+
+/* Journey Section, desktop (>=1024px) - a winding road map. A single
+   glowing gradient path rises left-to-right through three fixed stops;
+   each stop is a percentage-positioned anchor (not measured from the
+   component's own rendered size), and .journey-road's aspect-ratio locks
+   the SVG path and the HTML node/label overlay to the same coordinate
+   space regardless of the container's actual width - so it stays
+   correctly threaded together at any viewport size instead of drifting
+   apart, and the small fixed-pixel gaps used for label spacing are just
+   cosmetic offsets from a correctly-scaling anchor, not position-
+   determining offsets from a shrinking container (the bug class that
+   broke the old branching tree). */
+.journey-road {
+  position: relative;
+  width: 100%;
+  max-width: 1000px;
+  aspect-ratio: 1200 / 440;
+  margin: 90px auto 0;
+}
+
+.road-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.road-path {
+  fill: none;
+  stroke: url(#journeyRoadGradient);
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-dasharray: 12 14;
+  filter: drop-shadow(0 0 14px rgba(102, 126, 234, 0.55));
+  animation: road-flow 1.8s linear infinite;
+}
+
+@keyframes road-flow {
+  to { stroke-dashoffset: -52; }
+}
+
+.road-stop {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.road-node {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border: 3px solid #000;
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.9), 0 8px 20px rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 1.5rem;
+  z-index: 2;
+}
+
+.road-label {
+  position: absolute;
+  left: 0;
+  bottom: 42px;
+  transform: translateX(-50%);
+  width: 250px;
+  text-align: center;
+  z-index: 2;
+}
+
+.road-current-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  border: 2px solid #000;
+  margin-bottom: 8px;
+}
+
+.road-label-date {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(167, 139, 250, 0.9);
+  margin-bottom: 4px;
+}
+
+.road-label-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #fff;
+}
+
+.road-label-title::after {
+  content: '';
+  display: block;
+  width: 36px;
+  height: 3px;
+  background: var(--accent, #667eea);
+  border-radius: 2px;
+  margin: 8px auto;
+  box-shadow: 0 0 8px var(--accent, #667eea);
+}
+
+.road-label-org {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  margin-bottom: 8px;
+}
+
+.road-label-desc {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.65);
 }
 
 /* Blog Section - a horizontal scroll row rather than a bounded-height
